@@ -1,0 +1,166 @@
+/* ============================================================
+   鹿联AI广告 — 落地页品牌样式 (shared tokens + primitives)
+   ============================================================ */
+:root{
+  /* Brand */
+  --blue:#2563EB;        /* primary royal blue */
+  --blue-600:#1D4ED8;
+  --blue-700:#1E40AF;
+  --blue-400:#3B82F6;
+  --blue-tint:#EEF3FF;   /* pale blue fill */
+  --blue-tint-2:#E0E9FF;
+
+  /* WhatsApp action */
+  --wa:#25D366;
+  --wa-deep:#1EBE5B;
+  --wa-ink:#0B6B3A;
+
+  /* Ink / neutrals */
+  --ink:#0E1B2E;         /* near-navy headline */
+  --ink-2:#33425A;       /* body */
+  --ink-3:#64748B;       /* muted */
+  --line:#E6ECF5;
+  --bg:#F4F7FE;          /* page background */
+  --bg-2:#FFFFFF;
+  --card:#FFFFFF;
+
+  /* Accents for data */
+  --gold:#F0A92B;
+  --rose:#EF5DA8;
+
+  --shadow-sm:0 2px 10px rgba(16,32,64,.06);
+  --shadow:0 14px 40px -16px rgba(20,40,90,.22);
+  --shadow-lg:0 30px 70px -28px rgba(20,40,90,.34);
+  --r-lg:24px;
+  --r-md:16px;
+  --r-sm:12px;
+  --maxw:480px;          /* mobile-first content column */
+}
+
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  margin:0;
+  font-family:"PingFang SC","Microsoft YaHei","Heiti SC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:var(--ink);
+  background:var(--bg);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+img{max-width:100%;display:block;}
+a{color:inherit;text-decoration:none;}
+b,strong{font-weight:900;}
+
+/* phone-width column centered; on desktop a clean light surround (mobile-first landing) */
+.page{max-width:var(--maxw);margin:0 auto;background:var(--bg);min-height:100vh;position:relative;overflow:hidden;}
+@media(min-width:520px){
+  body.framed{background:radial-gradient(130% 90% at 50% -10%, #EAF0FB 0%, #DCE6F5 60%, #CFDBEF 100%);background-attachment:fixed;}
+  body.framed .page{box-shadow:0 30px 90px -34px rgba(20,40,90,.4);border-left:1px solid rgba(255,255,255,.6);border-right:1px solid rgba(255,255,255,.6);}
+  /* keep floating bubble & sticky bar aligned to the centered column, not the viewport edge */
+  .fab{right:calc(50% - 240px + 16px);}
+}
+
+/* ---------- Logo lockup ---------- */
+.logo{display:inline-flex;align-items:center;gap:9px;}
+.logo .mark{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(150deg,var(--blue-400),var(--blue-700));
+  color:#fff;font-weight:900;font-size:20px;line-height:1;
+  display:grid;place-items:center;
+  box-shadow:0 6px 16px -6px rgba(37,99,235,.7);
+}
+.logo .name{font-weight:900;font-size:18px;letter-spacing:.3px;color:var(--ink);}
+.logo .name span{color:var(--blue);}
+
+/* ---------- Pills / badges ---------- */
+.pill{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 13px;border-radius:999px;font-size:13px;font-weight:700;
+  background:var(--blue-tint);color:var(--blue-600);
+}
+.trust-row{display:flex;flex-wrap:wrap;gap:9px 16px;}
+.trust-row .t{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink-2);}
+.trust-row .t svg{flex:0 0 auto;}
+
+/* ---------- WhatsApp button ---------- */
+.wa-btn{
+  --h:60px;
+  display:flex;align-items:center;justify-content:center;gap:11px;
+  width:100%;min-height:var(--h);padding:0 20px;
+  border:none;border-radius:16px;cursor:pointer;
+  background:linear-gradient(180deg,#2BE06F,var(--wa-deep));
+  color:#fff;font-family:inherit;font-weight:900;font-size:18px;letter-spacing:.2px;
+  box-shadow:0 14px 30px -10px rgba(30,190,91,.6), inset 0 1px 0 rgba(255,255,255,.35);
+  position:relative;overflow:hidden;
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.wa-btn:hover{transform:translateY(-2px);box-shadow:0 20px 38px -10px rgba(30,190,91,.7), inset 0 1px 0 rgba(255,255,255,.4);}
+.wa-btn:active{transform:translateY(0);}
+.wa-btn .ico{width:26px;height:26px;flex:0 0 auto;}
+.wa-btn .sub{display:block;font-size:11.5px;font-weight:700;opacity:.92;margin-top:1px;}
+.wa-btn .stack{display:flex;flex-direction:column;justify-content:center;line-height:1.18;text-align:left;}
+/* subtle sheen */
+.wa-btn::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);
+  transform:skewX(-18deg);animation:sheen 4.5s ease-in-out infinite;}
+@keyframes sheen{0%,72%{left:-60%}86%{left:130%}100%{left:130%}}
+@media(prefers-reduced-motion:reduce){.wa-btn::after{display:none;}}
+
+.ghost-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;min-height:52px;border-radius:14px;
+  background:#fff;border:1.5px solid var(--line);color:var(--ink);
+  font-family:inherit;font-weight:800;font-size:15px;cursor:pointer;
+}
+
+/* ---------- Sticky bottom CTA ---------- */
+.sticky-cta{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  max-width:var(--maxw);margin:0 auto;
+  padding:11px 16px calc(11px + env(safe-area-inset-bottom));
+  background:rgba(255,255,255,.86);backdrop-filter:blur(14px);
+  border-top:1px solid var(--line);
+  box-shadow:0 -10px 30px -16px rgba(20,40,90,.25);
+  transform:translateY(120%);transition:transform .35s cubic-bezier(.22,1,.36,1);
+}
+.sticky-cta.show{transform:translateY(0);}
+.sticky-cta .wa-btn{--h:54px;font-size:16.5px;border-radius:14px;}
+
+/* ---------- Floating WhatsApp bubble ---------- */
+.fab{
+  position:fixed;z-index:55;right:16px;bottom:84px;
+  width:60px;height:60px;border-radius:50%;
+  background:linear-gradient(180deg,#2BE06F,var(--wa-deep));
+  display:grid;place-items:center;cursor:pointer;border:none;
+  box-shadow:0 16px 30px -8px rgba(30,190,91,.7);
+  animation:fabpop 2.6s ease-in-out infinite;
+}
+@keyframes fabpop{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.fab svg{width:32px;height:32px;}
+.fab .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--wa);opacity:.55;animation:ring 2.2s ease-out infinite;}
+@keyframes ring{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.7);opacity:0}}
+@media(prefers-reduced-motion:reduce){.fab,.fab .ring{animation:none;}}
+
+/* ---------- Section scaffolding ---------- */
+.sec{padding:42px 20px;}
+.eyebrow{font-size:13px;font-weight:900;letter-spacing:2px;color:var(--blue);text-transform:uppercase;}
+.h2{font-size:27px;font-weight:900;line-height:1.25;letter-spacing:-.5px;margin:8px 0 0;text-wrap:balance;}
+.lead{color:var(--ink-2);font-size:15.5px;margin-top:10px;}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);}
+
+/* reveal on scroll — TRANSFORM ONLY (opacity always 1, so a stalled animation never hides content) */
+.reveal{opacity:1;}
+html.js .reveal{transform:translateY(22px);}
+html.js .reveal.in{transform:none;animation:revealIn .6s cubic-bezier(.22,1,.36,1);}
+@keyframes revealIn{from{transform:translateY(22px)}to{transform:none}}
+@media(prefers-reduced-motion:reduce){html.js .reveal{transform:none;}html.js .reveal.in{animation:none;}}
+
+.scarcity{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:999px;font-size:13px;font-weight:800;
+  background:#FFF3E6;color:#B5640A;border:1px solid #FBD9A8;
+}
+.scarcity .dot{width:8px;height:8px;border-radius:50%;background:#F0820C;box-shadow:0 0 0 0 rgba(240,130,12,.6);animation:blip 1.6s infinite;}
+@keyframes blip{0%{box-shadow:0 0 0 0 rgba(240,130,12,.6)}70%{box-shadow:0 0 0 7px rgba(240,130,12,0)}100%{box-shadow:0 0 0 0 rgba(240,130,12,0)}}

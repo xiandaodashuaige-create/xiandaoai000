@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<!-- Meta Pixel Code -->
+<script>
+if(!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)){!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1510126964173322');
+fbq('track', 'PageView');}
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1510126964173322&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<title>鹿联AI广告 · 免费获客诊断报告 | V2 诊断钩子版</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="shortcut icon" href="assets/favicon.ico">
+<link rel="stylesheet" href="assets/brand.css">
+<style>
+  /* ===== V2 诊断钩子版 ===== */
+  .v2-top{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;position:sticky;top:0;z-index:40;background:rgba(244,247,254,.9);backdrop-filter:blur(10px);}
+  .v2-top .quota-mini{font-size:11.5px;font-weight:800;color:#B5640A;background:#FFF3E6;border:1px solid #FBD9A8;padding:6px 11px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;}
+  .v2-top .quota-mini .dot{width:7px;height:7px;border-radius:50%;background:#F0820C;}
+
+  .hero{padding:18px 20px 8px;text-align:center;}
+  .hero .eyebrow{display:inline-block;}
+  .hero h1{font-size:32px;line-height:1.24;font-weight:900;letter-spacing:-.6px;margin:14px 0 0;text-wrap:balance;}
+  .hero h1 em{font-style:normal;color:var(--blue);}
+  .hero p.sub{font-size:15px;color:var(--ink-2);margin:14px auto 0;max-width:24em;}
+  .market-strip{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  .market-strip span{font-size:11.5px;font-weight:900;color:var(--ink-2);background:#fff;border:1px solid var(--line);padding:5px 9px;border-radius:999px;box-shadow:var(--shadow-sm);}
+  .market-strip .hot{color:var(--wa-ink);background:#E7F8EE;border-color:#BDE8CB;}
+
+  /* report card */
+  .report{position:relative;margin:26px 0 0;text-align:left;border-radius:22px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);overflow:hidden;}
+  .report .rhead{display:flex;align-items:center;gap:10px;padding:16px 18px;background:linear-gradient(120deg,#1b3568,#2563EB);color:#fff;}
+  .report .rhead .ic{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);display:grid;place-items:center;}
+  .report .rhead .ic svg{width:18px;height:18px;}
+  .report .rhead .t b{display:block;font-size:15px;font-weight:900;}
+  .report .rhead .t span{font-size:11px;opacity:.85;}
+  .report .rhead .live{margin-left:auto;font-size:10.5px;font-weight:800;background:#2BE06F;color:#06351c;padding:4px 9px;border-radius:999px;}
+  .report .rbody{padding:8px 18px 18px;}
+  .rrow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px dashed var(--line);}
+  .rrow:last-child{border-bottom:none;}
+  .rrow .k{font-size:13.5px;color:var(--ink-2);font-weight:600;display:flex;align-items:center;gap:8px;}
+  .rrow .k .d{width:8px;height:8px;border-radius:50%;}
+  .rrow .v{font-size:16px;font-weight:900;color:var(--ink);}
+  .rrow .v.good{color:#1EBE5B;}
+  .rrow .score{display:flex;align-items:baseline;gap:3px;}
+  .rrow .score .big{font-size:22px;font-weight:900;color:var(--blue);}
+  .bar{width:84px;height:7px;border-radius:99px;background:#EAF0FB;overflow:hidden;}
+  .bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--blue-400),var(--blue-700));}
+  /* locked zone */
+  .locked{position:relative;}
+  .locked .blurzone{filter:blur(6px);opacity:.55;pointer-events:none;user-select:none;}
+  .lockover{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,.85));}
+  .lockover .lk{width:38px;height:38px;border-radius:50%;background:var(--blue);display:grid;place-items:center;box-shadow:0 8px 18px -6px rgba(37,99,235,.6);}
+  .lockover .lk svg{width:18px;height:18px;color:#fff;}
+  .lockover b{font-size:14px;color:var(--ink);}
+  .lockover span{font-size:11.5px;color:var(--ink-3);}
+
+  .cta-block{margin-top:20px;}
+  .reassure{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:11px;font-size:12.5px;color:var(--ink-3);font-weight:600;flex-wrap:wrap;}
+  .reassure b{color:var(--ink-2);}
+  .local-proof{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;text-align:left;}
+  .local-proof .lp{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;}
+  .local-proof .lp b{display:block;font-size:13.5px;}
+  .local-proof .lp span{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3);line-height:1.45;}
+
+  /* what's inside */
+  .inside{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .inside-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px;}
+  .inside-grid .it{padding:16px;border-radius:16px;background:#FBFCFE;border:1px solid var(--line);}
+  .inside-grid .it .ic{width:38px;height:38px;border-radius:11px;background:var(--blue-tint);display:grid;place-items:center;margin-bottom:10px;}
+  .inside-grid .it .ic svg{width:20px;height:20px;color:var(--blue);}
+  .inside-grid .it b{font-size:14.5px;display:block;}
+  .inside-grid .it span{font-size:12.5px;color:var(--ink-3);}
+
+  /* steps + chat */
+  .steps{display:flex;flex-direction:column;gap:0;margin-top:22px;}
+  .step{display:flex;gap:16px;position:relative;padding-bottom:24px;}
+  .step:not(:last-child)::before{content:"";position:absolute;left:21px;top:44px;bottom:0;width:2px;background:linear-gradient(var(--blue-tint-2),transparent);}
+  .step .num{flex:0 0 auto;width:44px;height:44px;border-radius:50%;background:#fff;border:2px solid var(--blue);color:var(--blue);font-weight:900;font-size:18px;display:grid;place-items:center;box-shadow:var(--shadow-sm);}
+  .step .sc b{font-size:16px;display:block;}
+  .step .sc p{margin:4px 0 0;font-size:13.5px;color:var(--ink-2);}
+
+  .chat{margin-top:10px;background:#E7F3EA;border-radius:16px;padding:14px;border:1px solid #CFE9D6;}
+  .chat .meta{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--wa-ink);margin-bottom:10px;}
+  .chat .meta svg{width:18px;height:18px;color:var(--wa-deep);}
+  .bubble{background:#fff;border-radius:4px 14px 14px 14px;padding:11px 13px;font-size:13px;color:var(--ink);line-height:1.55;box-shadow:0 2px 6px rgba(0,0,0,.05);}
+  .bubble .fill{color:var(--blue);font-weight:800;}
+  .chat .auto{font-size:11px;color:var(--ink-3);margin-top:8px;display:flex;align-items:center;gap:5px;}
+
+  /* proof */
+  .proof{background:#fff;border-top:1px solid var(--line);}
+  .case-main{margin-top:20px;border:1px solid #D8E5F6;border-radius:22px;background:linear-gradient(180deg,#F8FBFF,#fff);box-shadow:var(--shadow-sm);padding:18px;}
+  .case-main .case-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .case-main .who b{display:block;font-size:17px;line-height:1.25;}
+  .case-main .who span{display:block;margin-top:3px;font-size:12px;color:var(--ink-3);}
+  .case-main .badge{font-size:10.5px;font-weight:900;color:var(--wa-ink);background:#E7F8EE;border:1px solid #BDE8CB;border-radius:999px;padding:5px 8px;white-space:nowrap;}
+  .case-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:16px;}
+  .case-metrics .m{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center;}
+  .case-metrics .m b{display:block;font-size:24px;line-height:1.05;color:var(--blue);letter-spacing:-.5px;}
+  .case-metrics .m b.green{color:#1EBE5B;}
+  .case-metrics .m span{display:block;margin-top:5px;font-size:10.8px;font-weight:700;color:var(--ink-3);}
+  .case-main .case-note{margin:14px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.6;border-left:3px solid var(--blue-tint-2);padding-left:11px;}
+  .case-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+  .case-mini{background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px;}
+  .case-mini .topline{font-size:11px;color:var(--ink-3);font-weight:800;}
+  .case-mini b{display:block;margin-top:6px;font-size:22px;line-height:1.1;color:var(--blue);}
+  .case-mini b.green{color:#1EBE5B;}
+  .case-mini span{display:block;margin-top:8px;font-size:12.5px;color:var(--ink-2);line-height:1.5;}
+  .verify-note{margin-top:14px;background:#F8FBFF;border:1px dashed #CFE0F6;border-radius:14px;padding:12px 13px;font-size:12px;color:var(--ink-2);line-height:1.6;}
+  .verify-note b{color:var(--ink);}
+
+  /* faq trust */
+  .faq{background:#fff;border-top:1px solid var(--line);}
+  .qa{margin-top:18px;display:flex;flex-direction:column;gap:10px;}
+  .qa .q{padding:16px;border-radius:14px;background:#FBFCFE;border:1px solid var(--line);}
+  .qa .q b{font-size:14.5px;display:flex;align-items:center;gap:8px;}
+  .qa .q b .qmark{width:22px;height:22px;border-radius:6px;background:var(--blue-tint);color:var(--blue);display:grid;place-items:center;font-size:13px;font-weight:900;flex:0 0 auto;}
+  .qa .q p{margin:8px 0 0;font-size:13px;color:var(--ink-2);padding-left:30px;}
+  .safety{background:#0E1B2E;color:#fff;}
+  .safety .eyebrow{color:#7FB0FF;}
+  .safety .h2{color:#fff;}
+  .safety .lead{color:#B7C6DE;}
+  .safe-list{margin-top:18px;display:grid;gap:10px;}
+  .safe-list .safe{display:flex;gap:11px;align-items:flex-start;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;}
+  .safe-list .safe .ok{width:24px;height:24px;border-radius:8px;background:#E7F8EE;color:var(--wa-ink);display:grid;place-items:center;font-weight:900;flex:0 0 auto;}
+  .safe-list .safe b{display:block;font-size:14px;color:#fff;}
+  .safe-list .safe span{display:block;margin-top:2px;font-size:12px;color:#B7C6DE;}
+
+  .final{padding:44px 20px 38px;text-align:center;}
+  .final h2{font-size:27px;font-weight:900;letter-spacing:-.5px;margin:0 0 8px;text-wrap:balance;}
+  .final .scarcity{margin-bottom:18px;}
+  .final .micro{font-size:12px;color:var(--ink-3);margin-top:14px;}
+
+  footer{padding:26px 20px 96px;text-align:center;color:var(--ink-3);font-size:12px;border-top:1px solid var(--line);background:#fff;}
+  footer .logo{margin-bottom:10px;}footer .logo .name{font-size:15px;}
+</style>
+</head>
+<body class="framed">
+<div class="page" data-screen-label="V2 诊断钩子版">
+
+  <header class="v2-top">
+    <span class="logo"><span class="mark">鹿</span><span class="name">鹿联<span>AI</span>广告</span></span>
+    <span class="quota-mini"><span class="dot"></span>今日剩 <b style="margin:0 2px" data-quota>6</b> 份免费诊断</span>
+  </header>
+
+  <!-- hero -->
+  <section class="hero" data-hero-end>
+    <span class="eyebrow">专做新加坡 / 马来西亚实体店本地获客</span>
+    <h1>60 秒，免费发起你门店的<br><em>《本地获客诊断报告》</em></h1>
+    <p class="sub">专业顾问结合本地投放经验和 AI 数据辅助，帮你看清门店周边客流、预算范围和到店机会；适不适合投，我们会直接说清楚。</p>
+    <div class="market-strip">
+      <span class="hot">Singapore · SGD</span>
+      <span class="hot">Malaysia · RM</span>
+      <span>美容</span>
+      <span>餐饮</span>
+      <span>零售</span>
+      <span>教育</span>
+    </div>
+
+    <!-- report preview -->
+    <div class="report">
+      <div class="rhead">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg></span>
+        <div class="t"><b>本地获客诊断报告</b><span>示例 · 美容行业 / Singapore & Malaysia</span></div>
+        <span class="live">快速诊断</span>
+      </div>
+      <div class="rbody">
+        <div class="rrow">
+          <span class="k"><span class="d" style="background:#2BE06F"></span>行业获客匹配度</span>
+          <span class="score"><span class="big">92</span><span style="font-size:12px;color:var(--ink-3);font-weight:700">/100</span></span>
+        </div>
+        <div class="rrow">
+          <span class="k"><span class="d" style="background:#2563EB"></span>周边 3 公里潜在客流</span>
+          <span class="v">~12,400 <span style="font-size:11px;color:var(--ink-3)">人/月</span></span>
+        </div>
+        <div class="rrow">
+          <span class="k"><span class="d" style="background:#F0A92B"></span>同行投放强度</span>
+          <span class="bar"><i style="width:55%"></i></span>
+        </div>
+        <div class="locked">
+          <div class="blurzone">
+            <div class="rrow"><span class="k"><span class="d" style="background:#2563EB"></span>建议月广告预算</span><span class="v good">S$1.2k / RM3.8k 起</span></div>
+            <div class="rrow"><span class="k"><span class="d" style="background:#2BE06F"></span>预估月新增到店客</span><span class="v good">45–70 位</span></div>
+            <div class="rrow"><span class="k"><span class="d" style="background:#EF5DA8"></span>预估投产比 ROI</span><span class="v good">按地区单独估算</span></div>
+          </div>
+          <div class="lockover">
+            <span class="lk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></span>
+            <b>解锁你门店的专属诊断</b>
+            <span>预算 · 客流 · 预估到店客 · ROI</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta-block">
+      <a class="wa-btn" data-wa data-wa-msg="您好，我想免费拿《本地获客诊断报告》。行业：__；地区：__；预算：__。">
+        <svg class="ico" viewBox="0 0 32 32" fill="currentColor"><path d="M16 .4C7.4.4.5 7.3.5 15.9c0 2.8.7 5.4 2 7.7L.4 31.6l8.2-2.1c2.2 1.2 4.7 1.9 7.4 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.4 16 .4zm0 28.3c-2.4 0-4.6-.6-6.5-1.8l-.5-.3-4.9 1.3 1.3-4.8-.3-.5c-1.3-2-2-4.4-2-6.9C2.6 8.5 8.5 2.6 16 2.6s13.4 5.9 13.4 13.3S23.5 28.7 16 28.7zm7.4-9.9c-.4-.2-2.4-1.2-2.8-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3 0-.5 0-.7-.1-.2-.9-2.1-1.2-2.9-.3-.8-.6-.7-.9-.7h-.7c-.2 0-.6.1-1 .5-.3.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.9c.2.2 2.6 4 6.3 5.6.9.4 1.6.6 2.1.8.9.3 1.7.2 2.3.1.7-.1 2.4-1 2.7-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z"/></svg>
+        <span class="stack">免费拿我的诊断报告<span class="sub">WhatsApp 发送 · 通常 1 分钟内回复</span></span>
+      </a>
+      <div class="reassure">✅ <b>100% 免费</b> &nbsp;·&nbsp; 不收验证码 / 银行卡 &nbsp;·&nbsp; 不合适也会如实告诉你</div>
+      <div class="local-proof">
+        <div class="lp"><b>新加坡案例</b><span>中医养生 / 美容客户，每月 300+ 咨询，单个咨询约 S$4。</span></div>
+        <div class="lp"><b>马来西亚可测</b><span>KL / PJ / JB / Penang 由顾问按商圈、语言和预算单独诊断。</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- what's inside -->
+  <section class="sec inside reveal">
+    <span class="eyebrow">报告里有什么</span>
+    <h2 class="h2">一份就够你看懂，<br>到底值不值得投</h2>
+    <div class="inside-grid">
+      <div class="it"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5-7-11a7 7 0 0114 0c0 6-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span><b>周边客流地图</b><span>门店 3–5 公里有多少潜在顾客</span></div>
+      <div class="it"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M5 7h9a3 3 0 010 6H8a3 3 0 000 6h10"/></svg></span><b>建议预算区间</b><span>每月该投多少最划算</span></div>
+      <div class="it"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/></svg></span><b>预估到店客数</b><span>这笔预算大概能带回几个客</span></div>
+      <div class="it"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-6"/></svg></span><b>预估投产比 ROI</b><span>投 1 块大概能赚回几块</span></div>
+    </div>
+  </section>
+
+  <!-- steps + chat -->
+  <section class="sec reveal">
+    <span class="eyebrow">怎么拿到 · 超简单</span>
+    <h2 class="h2">3 步，全程在 WhatsApp 上</h2>
+    <div class="steps">
+      <div class="step"><span class="num">1</span><div class="sc"><b>点击按钮，跳到 WhatsApp</b><p>消息已经帮你写好，直接发送即可，不用打字纠结。</p>
+        <div class="chat">
+          <div class="meta"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16 .4C7.4.4.5 7.3.5 15.9c0 2.8.7 5.4 2 7.7L.4 31.6l8.2-2.1c2.2 1.2 4.7 1.9 7.4 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.4 16 .4z"/></svg>发送给 鹿联AI广告</div>
+          <div class="bubble">您好，我想免费拿《本地获客诊断报告》。行业：<span class="fill">__</span>；地区：<span class="fill">__</span>；预算：<span class="fill">__</span>。</div>
+          <div class="auto">⚡ 通常 1 分钟内收到真人回复</div>
+        </div>
+      </div></div>
+      <div class="step"><span class="num">2</span><div class="sc"><b>告诉我们你的行业和地区</b><p>一句话就行。顾问会结合本地经验和数据，整理你的专属诊断。</p></div></div>
+      <div class="step"><span class="num">3</span><div class="sc"><b>免费拿到报告 + 1 对 1 解读</b><p>真人顾问陪你看懂每个数字，适不适合投、怎么投，说得清清楚楚。</p></div></div>
+    </div>
+  </section>
+
+  <!-- proof -->
+  <section class="sec proof reveal">
+    <span class="eyebrow">真实案例 · 可查看打码截图</span>
+    <h2 class="h2">新加坡真实案例，<br>先看结果再决定</h2>
+    <div class="case-main">
+      <div class="case-head">
+        <div class="who">
+          <b>紫珺阁中医养生堂</b>
+          <span>新加坡 · 中医养生 / 美容 · 合作 6 个月</span>
+        </div>
+        <span class="badge">可看打码截图</span>
+      </div>
+      <div class="case-metrics">
+        <div class="m"><b class="green">300+</b><span>真实咨询/月</span></div>
+        <div class="m"><b>S$4</b><span>单个咨询约</span></div>
+        <div class="m"><b>6个月</b><span>持续合作</span></div>
+      </div>
+      <p class="case-note">咨询来源包含 WhatsApp / 表单线索。可在沟通时要求查看打码投放截图、咨询截图或主页线索。</p>
+    </div>
+    <div class="case-grid">
+      <div class="case-mini">
+        <div class="topline">E'franz Skin Diary · 新加坡美容护肤</div>
+        <b>↓ 50%</b>
+        <span>接手 1 个月，获客成本降低约一半，之后续签半年投放。</span>
+      </div>
+      <div class="case-mini">
+        <div class="topline">马来西亚诊断方式</div>
+        <b class="green">MY</b>
+        <span>KL / PJ / JB / Penang 不套用新加坡数据，按城市、语言、商圈和预算单独估算。</span>
+      </div>
+    </div>
+    <div class="verify-note"><b>说明：</b>不同地区、行业、预算和后续回复方式都会影响最终结果，不承诺固定收益；免费诊断会先判断你的店适不适合投放。</div>
+  </section>
+
+  <!-- safety -->
+  <section class="sec safety reveal">
+    <span class="eyebrow">免费诊断 · 规则先说清楚</span>
+    <h2 class="h2">不会要敏感资料，<br>不会先让你付款</h2>
+    <p class="lead">我们只用你的行业、地区和预算范围做初步诊断；真正合作前，也会由顾问说明预算、服务内容和预期风险。</p>
+    <div class="safe-list">
+      <div class="safe"><span class="ok">✓</span><div><b>不会索取验证码 / 银行卡 / 密码</b><span>免费诊断阶段不需要任何付款资料。</span></div></div>
+      <div class="safe"><span class="ok">✓</span><div><b>只通过 WhatsApp 沟通</b><span>你可以随时停止对话，不会电话轰炸。</span></div></div>
+      <div class="safe"><span class="ok">✓</span><div><b>先判断适不适合，再谈投放</b><span>行业、商圈或预算不适合，会直接告诉你。</span></div></div>
+    </div>
+  </section>
+
+  <!-- faq trust -->
+  <section class="sec faq reveal">
+    <span class="eyebrow">点之前，先放心</span>
+    <h2 class="h2">你可能在顾虑的几件事</h2>
+    <div class="qa">
+      <div class="q"><b><span class="qmark">?</span>真的免费吗？会偷偷收费吗？</b><p>完全免费。诊断报告 + 1 对 1 解读不收一分钱，要不要合作完全由你决定。</p></div>
+      <div class="q"><b><span class="qmark">?</span>会一直被推销、被电话轰炸吗？</b><p>不会。我们只在 WhatsApp 上回复你，不打骚扰电话；不想聊随时停。</p></div>
+      <div class="q"><b><span class="qmark">?</span>我的店很小 / 很冷门，适合吗？</b><p>正因为小才更要把钱花准。报告会直接告诉你适不适合，不适合我们也会老实说。</p></div>
+      <div class="q"><b><span class="qmark">?</span>新加坡和马来西亚会分开看吗？</b><p>会。新加坡按 SGD、商圈和服务半径估算；马来西亚按 RM、城市、语言受众和区域消费力估算。</p></div>
+    </div>
+  </section>
+
+  <!-- final -->
+  <section class="final reveal">
+    <div class="scarcity"><span class="dot"></span>本月免费名额有限 · 今日仅剩 <b style="margin:0 2px" data-quota>6</b> 份</div>
+    <h2>现在领，<br>今天就能看到你的诊断</h2>
+    <a class="wa-btn" data-wa data-wa-msg="您好，我想免费拿《本地获客诊断报告》。行业：__；地区：__；预算：__。" style="margin-top:18px;">
+      <svg class="ico" viewBox="0 0 32 32" fill="currentColor"><path d="M16 .4C7.4.4.5 7.3.5 15.9c0 2.8.7 5.4 2 7.7L.4 31.6l8.2-2.1c2.2 1.2 4.7 1.9 7.4 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.4 16 .4zm0 28.3c-2.4 0-4.6-.6-6.5-1.8l-.5-.3-4.9 1.3 1.3-4.8-.3-.5c-1.3-2-2-4.4-2-6.9C2.6 8.5 8.5 2.6 16 2.6s13.4 5.9 13.4 13.3S23.5 28.7 16 28.7zm7.4-9.9c-.4-.2-2.4-1.2-2.8-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3 0-.5 0-.7-.1-.2-.9-2.1-1.2-2.9-.3-.8-.6-.7-.9-.7h-.7c-.2 0-.6.1-1 .5-.3.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.9c.2.2 2.6 4 6.3 5.6.9.4 1.6.6 2.1.8.9.3 1.7.2 2.3.1.7-.1 2.4-1 2.7-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z"/></svg>
+      <span class="stack">免费拿我的诊断报告<span class="sub">WhatsApp · 1 分钟内回复</span></span>
+    </a>
+    <div class="micro">🔒 仅用于整理你的诊断 · 我们不会公开你的门店信息</div>
+  </section>
+
+  <footer>
+    <span class="logo"><span class="mark">鹿</span><span class="name">鹿联<span>AI</span>广告</span></span>
+    <div>专业顾问 + AI 数据辅助 · 本地实体店获客诊断<br>服务 新加坡 · 马来西亚 · 港澳 · 中国大陆 · 台湾</div>
+  </footer>
+
+  <!-- floating bubble -->
+  <a class="fab" data-wa data-wa-msg="您好，我想免费拿《本地获客诊断报告》。行业：__；地区：__；预算：__。" aria-label="WhatsApp 咨询">
+    <svg viewBox="0 0 32 32" fill="#fff"><path d="M16 .4C7.4.4.5 7.3.5 15.9c0 2.8.7 5.4 2 7.7L.4 31.6l8.2-2.1c2.2 1.2 4.7 1.9 7.4 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.4 16 .4zm7.4 18.4c-.4-.2-2.4-1.2-2.8-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3 0-.5 0-.7-.1-.2-.9-2.1-1.2-2.9-.3-.8-.6-.7-.9-.7h-.7c-.2 0-.6.1-1 .5-.3.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.9c.2.2 2.6 4 6.3 5.6.9.4 1.6.6 2.1.8.9.3 1.7.2 2.3.1.7-.1 2.4-1 2.7-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z"/></svg>
+    <span class="ring"></span>
+  </a>
+
+  <!-- sticky -->
+  <div class="sticky-cta">
+    <a class="wa-btn" data-wa data-wa-msg="您好，我想免费拿《本地获客诊断报告》。行业：__；地区：__；预算：__。">
+      <svg class="ico" viewBox="0 0 32 32" fill="currentColor"><path d="M16 .4C7.4.4.5 7.3.5 15.9c0 2.8.7 5.4 2 7.7L.4 31.6l8.2-2.1c2.2 1.2 4.7 1.9 7.4 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.4 16 .4z"/></svg>
+      <span class="stack">免费拿诊断报告<span class="sub">今日剩 <span data-quota>6</span> 份 · WhatsApp</span></span>
+    </a>
+  </div>
+
+</div>
+<script src="assets/shared.js"></script>
+</body>
+</html>

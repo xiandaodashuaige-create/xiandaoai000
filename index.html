@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>鹿联AI广告 · 落地页改版 3 版方案</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="shortcut icon" href="assets/favicon.ico">
+<link rel="stylesheet" href="assets/brand.css">
+<style>
+  body{background:#EDF1F9;}
+  .wrap{max-width:1180px;margin:0 auto;padding:34px 24px 80px;}
+  .masthead{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:30px;}
+  .masthead .logo .mark{width:40px;height:40px;font-size:23px;}
+  .masthead .logo .name{font-size:21px;}
+  .masthead .wa-num{font-size:12.5px;font-weight:800;color:var(--wa-ink);background:#E7F8EE;border:1px solid #Bde8cb;padding:8px 13px;border-radius:999px;}
+
+  .hero-intro{background:#fff;border:1px solid var(--line);border-radius:24px;padding:34px;box-shadow:var(--shadow-sm);}
+  .hero-intro .kicker{font-size:13px;font-weight:900;letter-spacing:2px;color:var(--blue);text-transform:uppercase;}
+  .hero-intro h1{font-size:34px;font-weight:900;letter-spacing:-1px;margin:10px 0 0;text-wrap:balance;}
+  .hero-intro .desc{color:var(--ink-2);font-size:15.5px;margin-top:12px;max-width:60ch;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px;}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+  .panel{border-radius:18px;padding:22px;border:1px solid var(--line);}
+  .panel.problem{background:#FFF7F5;border-color:#FAD9CF;}
+  .panel.fix{background:#F2F8FF;border-color:#CFE2FB;}
+  .panel h3{margin:0 0 14px;font-size:16px;font-weight:900;display:flex;align-items:center;gap:9px;}
+  .panel.problem h3{color:#C2410C;}
+  .panel.fix h3{color:var(--blue-700);}
+  .panel ol,.panel ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:11px;}
+  .panel li{font-size:13.5px;color:var(--ink-2);line-height:1.55;display:flex;gap:10px;}
+  .panel li b{color:var(--ink);font-weight:800;}
+  .panel li .ix{flex:0 0 auto;width:21px;height:21px;border-radius:6px;display:grid;place-items:center;font-size:12px;font-weight:900;margin-top:1px;}
+  .panel.problem .ix{background:#FCE3DA;color:#D2491B;}
+  .panel.fix .ix{background:#DCEafe;color:var(--blue-600);}
+
+  .versions{margin-top:46px;}
+  .versions>h2{font-size:24px;font-weight:900;letter-spacing:-.5px;text-align:center;}
+  .versions>p{text-align:center;color:var(--ink-3);font-size:14px;margin-top:6px;}
+  .vrow{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:30px;}
+  @media(max-width:980px){.vrow{grid-template-columns:1fr;max-width:440px;margin-left:auto;margin-right:auto;}}
+
+  .vcard{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;}
+  .vcard.reco{border-color:#BDE8CB;box-shadow:0 18px 42px -24px rgba(30,190,91,.42);}
+  .vcard .vtag{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;font-size:12px;font-weight:900;padding:6px 12px;border-radius:999px;background:var(--blue-tint);color:var(--blue-700);}
+  .vcard.reco .vtag{background:#E7F8EE;color:var(--wa-ink);}
+  .vcard h3{font-size:19px;font-weight:900;margin:13px 0 0;letter-spacing:-.3px;}
+  .vcard .one{font-size:13px;color:var(--ink-2);margin:7px 0 0;min-height:38px;}
+  .vcard .focus{font-size:12px;color:var(--ink-3);margin:14px 0 0;}
+  .vcard .focus b{color:var(--ink);}
+  .vcard .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+  .vcard .chips span{font-size:11px;font-weight:700;color:var(--ink-2);background:#F1F5FB;border:1px solid var(--line);padding:4px 9px;border-radius:999px;}
+
+  /* phone preview */
+  .phone{margin:18px auto 0;width:236px;height:430px;background:#0E1B2E;border-radius:30px;padding:8px;box-shadow:var(--shadow);position:relative;}
+  .phone::before{content:"";position:absolute;top:15px;left:50%;transform:translateX(-50%);width:54px;height:5px;border-radius:99px;background:#33425A;z-index:3;}
+  .phone .scr{width:100%;height:100%;border-radius:23px;overflow:hidden;background:#F4F7FE;position:relative;}
+  .phone .scr img{width:100%;display:block;}
+  .phone .tapcatch{position:absolute;inset:0;z-index:2;cursor:pointer;}
+
+  .vcard .open{margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;border-radius:14px;background:var(--blue);color:#fff;font-weight:900;font-size:15px;text-decoration:none;box-shadow:0 12px 24px -10px rgba(37,99,235,.6);transition:transform .15s ease;}
+  .vcard .open:hover{transform:translateY(-2px);}
+  .vcard .open svg{width:17px;height:17px;}
+
+  .footnote{margin-top:40px;text-align:center;color:var(--ink-3);font-size:12.5px;line-height:1.7;}
+  .footnote b{color:var(--ink-2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <span class="logo"><span class="mark">鹿</span><span class="name">鹿联<span>AI</span>广告</span></span>
+    <span class="wa-num">承接 WhatsApp ·  +60 10-651 9843</span>
+  </div>
+
+  <!-- intro + analysis -->
+  <section class="hero-intro">
+    <span class="kicker">新加坡 / 马来西亚广告承接页 · 转化优化</span>
+    <h1>一个目标：让点击的人，<br>放心在 WhatsApp 聊起来</h1>
+    <p class="desc">基于新马用户移动端、WhatsApp 和高反诈敏感度的使用习惯，页面已强化本地化、免费诊断、反诈骗信任说明和可核验案例。建议主投 V2，V1/V3 用于对照测试和再营销。</p>
+
+    <div class="grid2">
+      <div class="panel problem">
+        <h3>⚠ 新马广告流量最容易卡住的点</h3>
+        <ol>
+          <li><span class="ix">1</span><span><b>免费 + WhatsApp 容易触发诈骗顾虑</b> —— 必须讲清不会要验证码、银行卡和密码。</span></li>
+          <li><span class="ix">2</span><span><b>地域不贴会降信任</b> —— 冷流量首屏优先展示新加坡 / 马来西亚，而不是香港案例。</span></li>
+          <li><span class="ix">3</span><span><b>收益承诺太硬会像广告话术</b> —— 改成先判断适不适合、结果因行业地区预算而异。</span></li>
+          <li><span class="ix">4</span><span><b>用户不想填长表</b> —— 预填 WhatsApp 只保留行业、地区、预算三个字段。</span></li>
+          <li><span class="ix">5</span><span><b>案例没有核验路径会显虚</b> —— 改为可要求核验截图/主页线索，不写不可点击的“主页可查”。</span></li>
+        </ol>
+      </div>
+      <div class="panel fix">
+        <h3>✓ 已执行的承接页优化</h3>
+        <ul>
+          <li><span class="ix">✓</span><span><b>V2 主投放页</b> —— 新马标签、SGD/RM、免费诊断报告和反诈骗说明前置。</span></li>
+          <li><span class="ix">✓</span><span><b>V3 案例页</b> —— 首屏换成新加坡案例，香港案例下沉到案例墙。</span></li>
+          <li><span class="ix">✓</span><span><b>V1 稳健页</b> —— 文案从“多赚多少”收敛为“先看适不适合”。</span></li>
+          <li><span class="ix">✓</span><span><b>本地预览性能</b> —— 移除外部字体阻塞，首屏图压缩，localhost 不加载 Pixel。</span></li>
+          <li><span class="ix">✓</span><span><b>WhatsApp 预填</b> —— 简化成行业 / 地区 / 预算，减少输入摩擦。</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- versions -->
+  <section class="versions">
+    <h2>三版方案 · 点开任意一版即可预览真机效果</h2>
+    <p>点击手机画面或下方按钮打开完整页面（CTA 会真实跳转到你的 WhatsApp）</p>
+
+    <div class="vrow">
+
+      <!-- V1 -->
+      <div class="vcard">
+        <span class="vtag">V1 · 经典信任版</span>
+        <h3>稳妥优化，先跑量</h3>
+        <p class="one">稳健版：先判断适不适合投放，降低“被推销”和诈骗顾虑。</p>
+        <p class="focus">主打：<b>信任降顾虑</b> · 单一 WhatsApp 主按钮 · 适合稳健 A/B 起步</p>
+        <div class="chips"><span>单一主CTA</span><span>吸底常驻</span><span>信任徽章×2处</span><span>名额稀缺</span></div>
+        <div class="phone"><div class="scr"><img src="previews/v1-hero.png" alt="V1 预览"><a class="tapcatch" href="v1.html" aria-label="打开 V1"></a></div></div>
+        <a class="open" href="v1.html">打开 V1 完整页面 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+
+      <!-- V2 -->
+      <div class="vcard reco">
+        <span class="vtag">V2 · 主投放推荐</span>
+        <h3>新马实体店专属诊断页</h3>
+        <p class="one">最适合冷广告流量：专业顾问 + AI 数据辅助，强调新加坡 / 马来西亚实体店本地获客。</p>
+        <p class="focus">主打：<b>垂直本地化 + 顾问可信度</b> · 建议作为 Meta / Google 主承接页</p>
+        <div class="chips"><span>SG/MY 本地化</span><span>专业顾问</span><span>AI数据辅助</span><span>反诈骗说明</span><span>短预填</span></div>
+        <div class="phone"><div class="scr"><img src="previews/v2-hero.png" alt="V2 预览"><a class="tapcatch" href="v2.html" aria-label="打开 V2"></a></div></div>
+        <a class="open" href="v2.html">打开 V2 完整页面 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+
+      <!-- V3 -->
+      <div class="vcard">
+        <span class="vtag">V3 · 案例数据版</span>
+        <h3>用新加坡案例开场</h3>
+        <p class="one">新加坡 300+ 咨询案例首屏，香港高 ROI 案例下沉，适合再营销和高意向人群。</p>
+        <p class="focus">主打：<b>结果说话</b> · 可要求核验 · 更适合再营销</p>
+        <div class="chips"><span>新加坡首屏</span><span>3家案例</span><span>可核验</span><span>数据条幅</span><span>浮动+吸底</span></div>
+        <div class="phone"><div class="scr"><img src="previews/v3-hero.png" alt="V3 预览"><a class="tapcatch" href="v3.html" aria-label="打开 V3"></a></div></div>
+        <a class="open" href="v3.html">打开 V3 完整页面 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <p class="footnote">
+    三版均为<b>移动优先</b>，桌面端也自适应居中 · 全部 CTA 跳转 <b>WhatsApp +60 10-651 9843</b> 并带预填话术<br>
+    已接入 <b>Meta Pixel（1510126964173322）</b>，非 localhost 环境加载，点击 CTA 触发 Lead 事件 · 案例口径已改为可要求核验<br>
+    建议投放顺序：先跑 <b>V2</b>，再用 V1/V3 做 A/B 或再营销；名额数字为示意，可按需固定或移除
+  </p>
+
+</div>
+</body>
+</html>
