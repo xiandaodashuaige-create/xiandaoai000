@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LULIAN Video Agent</title>
+  <meta name="description" content="鹿联 AI 营销视频员工 — 上传素材、参考爆款和需求，自动创建视频生产任务。" />
+  <style>
+    :root{--bg:#07120e;--panel:#0d1d17;--card:#12251e;--line:#244235;--green:#35d07f;--green2:#9df0bf;--text:#f5f8f6;--muted:#a9b8b0;--danger:#ff6969;--yellow:#ffd768}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:radial-gradient(circle at 80% 0%,#173a2c 0,transparent 30%),linear-gradient(180deg,#07120e,#091611 40%,#06100c);color:var(--text);min-height:100vh}
+    .wrap{max-width:1120px;margin:auto;padding:34px 20px 80px}.top{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:28px}.brand{font-size:14px;letter-spacing:.16em;color:var(--green2);font-weight:800}.title{font-size:40px;line-height:1.08;margin:9px 0 10px;font-weight:900}.sub{color:var(--muted);max-width:680px;line-height:1.7}
+    .badge{border:1px solid var(--line);background:#0b1a14;padding:9px 13px;border-radius:999px;color:var(--green2);font-size:13px;white-space:nowrap}
+    .grid{display:grid;grid-template-columns:1.45fr .85fr;gap:18px}@media(max-width:820px){.grid{grid-template-columns:1fr}.top{display:block}.badge{display:inline-block;margin-top:14px}}
+    .panel{background:rgba(13,29,23,.92);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 18px 60px rgba(0,0,0,.22)}.panel h2{font-size:18px;margin:0 0 16px}.row{display:grid;grid-template-columns:1fr 160px;gap:14px}@media(max-width:600px){.row{grid-template-columns:1fr}}
+    label{display:block;color:#dce8e1;font-size:13px;font-weight:700;margin:15px 0 7px}.input,textarea,select{width:100%;border-radius:12px;border:1px solid #2a473a;background:#07140f;color:white;padding:13px 14px;outline:none;font:inherit}textarea{min-height:132px;resize:vertical}.input:focus,textarea:focus,select:focus{border-color:var(--green)}
+    .drop{border:1px dashed #3c6a54;border-radius:14px;padding:14px;background:#081711}.drop small{color:var(--muted);display:block;margin-top:7px;line-height:1.5}input[type=file]{width:100%;color:#dbe7e0}
+    button{appearance:none;border:0;border-radius:13px;padding:14px 18px;font-weight:900;font-size:15px;cursor:pointer}.primary{background:linear-gradient(135deg,#39d481,#24ad68);color:#03120b;width:100%;margin-top:18px}.primary:disabled{opacity:.45;cursor:not-allowed}.ghost{background:#10231b;color:#dff5e8;border:1px solid #2a4d3c;padding:9px 12px;font-size:13px}
+    .status{margin-top:15px;border-radius:13px;padding:13px 14px;background:#07140f;border:1px solid #203b2f;color:#c9d8d0;display:none}.status.show{display:block}.error{color:#ff9c9c}.ok{color:#9df0bf}.progress{height:7px;background:#15271f;border-radius:99px;overflow:hidden;margin-top:10px}.bar{height:100%;background:var(--green);width:0%;transition:.25s}
+    .job{padding:13px 0;border-bottom:1px solid #20392e}.job:last-child{border-bottom:0}.job-head{display:flex;justify-content:space-between;gap:10px;font-weight:800}.job-meta{color:var(--muted);font-size:12px;margin-top:5px;line-height:1.5}.pill{font-size:11px;padding:4px 8px;border-radius:999px;background:#163124;color:var(--green2)}.result-link{display:inline-block;margin:8px 8px 0 0;color:#06120d;background:#85e9ae;padding:8px 11px;border-radius:9px;text-decoration:none;font-weight:800;font-size:13px}
+    .access{margin-bottom:16px;padding:13px;background:#0a1812;border:1px solid #294738;border-radius:13px}.accessline{display:flex;gap:8px}.accessline input{flex:1}.hint{color:var(--muted);font-size:12px;margin-top:7px}
+    .steps{display:grid;gap:10px;margin-top:8px}.step{display:flex;gap:10px;align-items:center;color:#c8d6cf;font-size:13px}.n{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;background:#16372a;color:var(--green2);font-weight:900}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><div class="brand">LULIAN AI · VIDEO FACTORY</div><div class="title">鹿联 AI 营销视频员工</div><div class="sub">上传主视频、爆款参考和客户素材，系统创建视频生产任务。生产逻辑按「全文语义理解 → 真实素材优先 → 缺镜头再 AI 补 → 广告字幕包装 → 自动质检」执行。</div></div>
+    <div class="badge">内部 V0 · 员工测试版</div>
+  </div>
+  <div class="grid">
+    <section class="panel">
+      <h2>创建视频任务</h2>
+      <div class="access">
+        <label style="margin-top:0">员工访问口令</label>
+        <div class="accessline"><input id="access" class="input" type="password" placeholder="输入内部口令"><button id="remember" class="ghost">记住</button></div>
+        <div class="hint">员工不需要登录你的 ChatGPT / Runway / MiniMax 等账号。</div>
+      </div>
+
+      <div class="row">
+        <div><label>项目 / 客户名称</label><input id="projectName" class="input" placeholder="例如：ABC 美容院 10月广告"></div>
+        <div><label>输出数量</label><select id="outputCount"><option value="1">1 条</option><option value="3">3 条</option></select></div>
+      </div>
+
+      <label>主视频 / 真人素材</label>
+      <div class="drop"><input id="mainFiles" type="file" accept="video/*" multiple><small>真人口播、客户原始视频。真实素材优先使用。</small></div>
+
+      <label>爆款参考视频</label>
+      <div class="drop"><input id="referenceFiles" type="file" accept="video/*" multiple><small>用于学习 Hook、镜头节奏、字幕、案例穿插和 CTA；不要求逐帧复制。</small></div>
+
+      <label>客户补充素材</label>
+      <div class="drop"><input id="assetFiles" type="file" accept="video/*,image/*,.zip" multiple><small>门店、顾客、产品、WhatsApp/预约截图、Logo、案例等。</small></div>
+
+      <label>制作要求</label>
+      <textarea id="brief" placeholder="例如：做一条 20 秒马来西亚美容院 Meta 广告。真人口播为主，前 3 秒必须有爆款 Hook；全文语义和画面逐句匹配；真实 B-roll 优先；AI 只补缺镜头；字幕不要挡脸；不要黑屏结尾；CTA 引导 WhatsApp。"></textarea>
+
+      <button id="submitBtn" class="primary">上传素材并创建任务</button>
+      <div id="submitStatus" class="status"><div id="statusText"></div><div class="progress"><div id="bar" class="bar"></div></div></div>
+    </section>
+
+    <aside class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="margin:0">最近任务</h2><button id="refresh" class="ghost">刷新</button></div>
+      <div class="steps">
+        <div class="step"><span class="n">1</span>完整理解口播与参考视频</div>
+        <div class="step"><span class="n">2</span>逐句匹配客户 / 授权真实素材</div>
+        <div class="step"><span class="n">3</span>缺镜头才调用 AI 生成</div>
+        <div class="step"><span class="n">4</span>字幕、CTA、声音与画面统一</div>
+        <div class="step"><span class="n">5</span>自动 QC 后输出候选版本</div>
+      </div>
+      <div id="jobs" style="margin-top:18px"><div class="hint">输入访问口令后可查看。</div></div>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SUPABASE_URL = 'https://ejspsxjeelhsevldmnhl.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ';
+const FN = SUPABASE_URL + '/functions/v1/video-agent-v0';
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const $ = id => document.getElementById(id);
+$('access').value = sessionStorage.getItem('lulianVideoAccess') || '';
+
+$('remember').onclick = () => {
+  sessionStorage.setItem('lulianVideoAccess', $('access').value.trim());
+  loadJobs();
+};
+
+async function api(action, body={}) {
+  const access = $('access').value.trim();
+  if (!access) throw new Error('请先输入员工访问口令');
+  const r = await fetch(FN, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-video-access':access,'apikey':SUPABASE_KEY},
+    body:JSON.stringify({action,...body})
+  });
+  const data = await r.json();
+  if (!r.ok || data.error) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+function allFiles() {
+  const groups = [
+    ['main', [...$('mainFiles').files]],
+    ['reference', [...$('referenceFiles').files]],
+    ['asset', [...$('assetFiles').files]]
+  ];
+  return groups.flatMap(([role, files]) => files.map(file => ({role,file})));
+}
+
+async function uploadOne(jobId, item, index, total) {
+  const sign = await api('sign_upload', {
+    job_id: jobId,
+    file_name: item.file.name,
+    content_type: item.file.type || 'application/octet-stream'
+  });
+  const { error } = await sb.storage.from(sign.bucket).uploadToSignedUrl(sign.path, sign.token, item.file, {
+    contentType:item.file.type || undefined,
+    upsert:false
+  });
+  if (error) throw error;
+  const pct = Math.round(((index+1)/Math.max(total,1))*88);
+  $('bar').style.width = pct + '%';
+  $('statusText').textContent = '正在上传素材 ' + (index+1) + '/' + total + '：' + item.file.name;
+  return {role:item.role,name:item.file.name,path:sign.path,size:item.file.size,type:item.file.type};
+}
+
+$('submitBtn').onclick = async () => {
+  const btn = $('submitBtn'), box=$('submitStatus'), txt=$('statusText');
+  box.classList.add('show'); box.classList.remove('error'); btn.disabled=true; $('bar').style.width='1%';
+  try{
+    const project_name=$('projectName').value.trim();
+    const brief=$('brief').value.trim();
+    if(!project_name || !brief) throw new Error('请填写项目名称和制作要求');
+    const init=await api('init_job',{project_name,brief,output_count:Number($('outputCount').value)});
+    const jobId=init.job.id;
+    const files=allFiles();
+    const meta=[];
+    for(let i=0;i<files.length;i++) meta.push(await uploadOne(jobId,files[i],i,files.length));
+    txt.textContent='素材上传完成，正在提交视频工厂…'; $('bar').style.width='94%';
+    await api('submit_job',{job_id:jobId,input_files:meta});
+    $('bar').style.width='100%'; txt.innerHTML='<span class="ok">任务已创建：'+jobId.slice(0,8)+'…</span>';
+    sessionStorage.setItem('lulianVideoAccess',$('access').value.trim());
+    await loadJobs();
+  }catch(e){
+    box.classList.add('error'); txt.textContent='提交失败：'+e.message;
+  }finally{btn.disabled=false}
+};
+
+function statusLabel(s){
+  return ({draft:'草稿',uploading:'上传中',queued:'排队中',processing:'制作中',review:'自动质检',completed:'已完成',failed:'失败'})[s]||s;
+}
+
+async function loadJobs(){
+  const root=$('jobs');
+  try{
+    const data=await api('list_jobs');
+    if(!data.jobs?.length){root.innerHTML='<div class="hint">暂无任务</div>';return}
+    root.innerHTML=data.jobs.map(j=>`
+      <div class="job" data-id="${j.id}">
+        <div class="job-head"><span>${escapeHtml(j.project_name)}</span><span class="pill">${statusLabel(j.status)}</span></div>
+        <div class="job-meta">${escapeHtml(j.stage||'')} · ${j.progress||0}%<br>${new Date(j.created_at).toLocaleString()}</div>
+        <button class="ghost job-detail" style="margin-top:8px" data-id="${j.id}">查看结果</button>
+        <div class="job-results" id="r-${j.id}"></div>
+      </div>`).join('');
+    document.querySelectorAll('.job-detail').forEach(b=>b.onclick=()=>showJob(b.dataset.id));
+  }catch(e){root.innerHTML='<div class="hint error">无法读取任务：'+escapeHtml(e.message)+'</div>'}
+}
+
+async function showJob(id){
+  const target=$('r-'+id);
+  target.innerHTML='<div class="hint">读取中…</div>';
+  try{
+    const {job}=await api('status',{job_id:id});
+    let h='<div class="job-meta">'+escapeHtml(job.stage||'')+' · '+(job.progress||0)+'%</div>';
+    if(job.output_files?.length){
+      h += job.output_files.map((o,i)=> o.url ? '<a class="result-link" target="_blank" href="'+o.url+'">查看成片 '+(i+1)+'</a>' : '').join('');
+    }else if(job.status==='failed'){
+      h += '<div class="error">'+escapeHtml(job.error_message||'任务失败')+'</div>';
+    }else h += '<div class="hint">视频工厂正在处理，稍后刷新。</div>';
+    target.innerHTML=h;
+  }catch(e){target.innerHTML='<div class="hint error">'+escapeHtml(e.message)+'</div>'}
+}
+
+function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+
+$('refresh').onclick=loadJobs;
+if($('access').value) loadJobs();
+</script>
+</body>
+</html>
