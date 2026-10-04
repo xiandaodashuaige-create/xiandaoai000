@@ -171,7 +171,14 @@ $('loginBtn').onclick=async()=>{
   const v=$('access').value.trim();
   if(!v)return;
   sessionStorage.setItem('lulianVideoAccess',v);
-  try{await loadJobs();hideModal()}catch(e){alert('口令不正确')}
+  try{
+    await api('auth');
+    hideModal();
+    await loadJobs();
+  }catch(e){
+    sessionStorage.removeItem('lulianVideoAccess');
+    alert(e.message==='unauthorized'?'口令不正确':'后台暂时不可用：'+e.message);
+  }
 };
 if(!saved)showModal();
 
@@ -208,7 +215,7 @@ document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
 
 async function uploadOne(jobId,file,index,total){
   const sign=await api('sign_upload',{job_id:jobId,file_name:file.name,content_type:file.type||'application/octet-stream'});
-  const {error}=await sb.storage.from(sign.bucket).uploadToSignedUrl(sign.path,sign.token,file,{contentType:file.type||undefined,upsert:false});
+  const {error}=await sb.storage.from(sign.bucket).upload(sign.path,file,{contentType:file.type||undefined,upsert:false});
   if(error)throw error;
   const pct=Math.round(((index+1)/Math.max(total,1))*85);
   setStatus('正在上传 '+file.name,pct);
@@ -251,10 +258,20 @@ async function showJob(id){
   const root=$('job-'+id);root.innerHTML='<div class="meta">读取中…</div>';
   const {job}=await api('status',{job_id:id});
   let h='<div class="meta">'+escapeHtml(job.stage||'')+' · '+(job.progress||0)+'%</div>';
-  if(job.output_files?.length)h+=job.output_files.map((o,i)=>o.url?'<a class="result" target="_blank" href="'+o.url+'">查看成片 '+(i+1)+'</a>':'').join(' ');
-  else if(job.status==='failed')h+='<div class="meta" style="color:#ff9a9a">'+escapeHtml(job.error_message||'任务失败')+'</div>';
+  if(job.output_files?.length){
+    h+=job.output_files.map((o,i)=>o.path?'<button class="result result-download" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">查看成片 '+(i+1)+'</button>':'').join(' ');
+  } else if(job.status==='failed')h+='<div class="meta" style="color:#ff9a9a">'+escapeHtml(job.error_message||'任务失败')+'</div>';
   else h+='<div class="meta">制作完成后，成片会出现在这里。</div>';
   root.innerHTML=h;
+  root.querySelectorAll('.result-download').forEach(btn=>btn.onclick=async()=>{
+    btn.disabled=true;
+    const {data,error}=await sb.storage.from(btn.dataset.bucket).download(btn.dataset.path);
+    btn.disabled=false;
+    if(error){alert('成片读取失败：'+error.message);return}
+    const u=URL.createObjectURL(data);
+    window.open(u,'_blank');
+    setTimeout(()=>URL.revokeObjectURL(u),60000);
+  });
 }
 function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 if(saved)loadJobs().catch(()=>showModal());
