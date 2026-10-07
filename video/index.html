@@ -96,7 +96,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 
   <section class="hero">
     <h1>把素材丢进来，<br>告诉我你想做什么。</h1>
-    <p>参考爆款、客户视频、门店素材、Logo 都可以一起上传。<br>系统会自己理解和分类，不用先填一堆表格。</p>
+    <p>参考爆款、客户视频、门店素材、Logo 都可以一起上传。<br>系统会先判断你真正要宣传的项目，不会把客户业务改成鹿联自己的业务。</p>
   </section>
 
   <main class="composer">
@@ -111,12 +111,14 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <div id="files" class="files"></div>
 
     <div class="ask">
-      <textarea id="brief" placeholder="例如：做一条20秒美容院Meta广告。真人口播为主，前三秒要强Hook，中间穿插真实顾客到店和护理场景，字幕别挡脸，最后引导WhatsApp。"></textarea>
+      <textarea id="brief" placeholder="一句话告诉我：这条视频卖什么 + 希望客户做什么。&#10;&#10;例如：这是香港美容院按摩项目，做一条20秒Meta广告，引导附近客户WhatsApp预约到店体验按摩。真人口播为主，前三秒强Hook，真实素材优先，繁体字、香港话。"></textarea>
     </div>
 
+    <div class="meta" style="margin-top:10px;color:#8fb3a0">默认规则：<b style="color:#cce8d8">不改变业务主题</b>。没写“鹿联AI广告代投”，就不会宣传鹿联代投。</div>
+
     <div class="quick">
-      <button class="chip" data-prompt="参考我上传的爆款，重做一条同类型营销视频。真人口播为主，全文语义和画面逐句匹配，真实素材优先，缺镜头再AI补。">参考爆款重做</button>
-      <button class="chip" data-prompt="做一条真人口播型广告。前三秒强Hook，中间穿插与台词语义一致的真实B-roll，字幕不要挡脸，结尾明确CTA。">真人口播广告</button>
+      <button class="chip" data-prompt="参考我上传的爆款，重做一条同类型营销视频。必须保持我原本宣传的产品/服务和客户行动目标，不得改成其他业务。真人口播为主，全文语义和画面逐句匹配，真实素材优先，缺镜头再AI补。">参考爆款重做</button>
+      <button class="chip" data-prompt="做一条真人口播型广告。保持我原本业务主题不变。前三秒强Hook，中间穿插与台词语义一致的真实B-roll，字幕不要挡脸，结尾CTA必须引导客户购买/预约我上传素材里的项目。">真人口播广告</button>
       <button class="chip" data-prompt="把我上传的真实素材重新剪成一条有营销节奏的短视频。不要随机混剪，每一句声音都要和画面对应。">真实素材混剪</button>
     </div>
 
