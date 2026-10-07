@@ -64,7 +64,15 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 .jobhead b{font-size:13px}
 .pill{font-size:11px;background:#153326;color:var(--green2);padding:4px 8px;border-radius:999px}
 .meta{color:#8fa197;font-size:11px;margin-top:5px;line-height:1.5}
-.result{display:inline-block;margin-top:8px;text-decoration:none;background:#92ecb4;color:#062012;padding:7px 10px;border-radius:9px;font-size:12px;font-weight:800}
+.result{display:inline-block;margin-top:8px;text-decoration:none;background:#92ecb4;color:#062012;padding:7px 10px;border-radius:9px;font-size:12px;font-weight:800;border:0;cursor:pointer}
+.version{font-size:11px;padding:4px 8px;border-radius:999px;background:#233d32;color:#d8e9df;margin-left:6px}
+.accepted{color:#8ff0b6;font-size:11px;margin-left:8px}
+.revactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.revbtn{border:1px solid #315645;background:#0c2017;color:#dbeae2;border-radius:10px;padding:8px 11px;font-size:12px;cursor:pointer}
+.revbtn.primarymini{background:#2fc97a;color:#04170e;border-color:#2fc97a;font-weight:800}
+.revquick{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.revchip{border:1px solid #315645;background:#0b1b14;color:#d9e8e0;border-radius:999px;padding:7px 9px;font-size:11px;cursor:pointer}
+.box textarea{width:100%;min-height:130px;margin-top:10px;padding:12px;border-radius:12px;border:1px solid #2b4d3e;background:#07140f;color:white;resize:vertical}
 .empty{color:#82958a;font-size:12px;padding:14px 0}
 .modal{position:fixed;inset:0;background:#020a078d;backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;padding:18px;z-index:20}
 .modal.show{display:flex}
@@ -142,6 +150,26 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
   </details>
 </div>
 
+<div id="revisionModal" class="modal">
+  <div class="box">
+    <h2>基于上一版继续改</h2>
+    <p id="revisionHint">只说哪里不满意、想怎么改。没有提到的部分会尽量保留。</p>
+    <div class="revquick">
+      <button class="revchip" data-scope="hook">改开头</button>
+      <button class="revchip" data-scope="material">换素材</button>
+      <button class="revchip" data-scope="voice">换声音</button>
+      <button class="revchip" data-scope="subtitle">减字幕</button>
+      <button class="revchip" data-scope="pace">加快节奏</button>
+      <button class="revchip" data-scope="cta">改CTA</button>
+      <button class="revchip" data-scope="redo">全部重做</button>
+    </div>
+    <textarea id="revisionText" placeholder="例如：开头太弱，保留后面内容不动，前三秒换一个更冲击的爆款Hook。"></textarea>
+    <input id="revisionScope" type="hidden" value="auto">
+    <button id="revisionSubmit">生成下一版</button>
+    <button id="revisionCancel" style="background:#16251e;color:#c8d7cf">取消</button>
+  </div>
+</div>
+
 <div id="modal" class="modal">
   <div class="box">
     <h2>员工入口</h2>
@@ -161,6 +189,7 @@ const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
 
 let selected=[];
+let revisionParent=null;
 const saved=sessionStorage.getItem('lulianVideoAccess')||'';
 $('access').value=saved;
 
@@ -244,11 +273,51 @@ $('submitBtn').onclick=async()=>{
 };
 
 const label=s=>({draft:'草稿',uploading:'上传中',queued:'排队中',processing:'制作中',review:'质检中',completed:'已完成',failed:'失败'})[s]||s;
+const revDefaults={
+  hook:'开头太弱，保留后面内容不动，前三秒换一个更冲击的爆款Hook。',
+  material:'中间画面不满意，保留文案和声音，换成更真实、更匹配语义的素材，避免AI感。',
+  voice:'声音不满意，保留画面结构，换一个更自然的香港粤语声音。',
+  subtitle:'字幕太多，减少字幕密度，不要挡脸，只保留关键营销词。',
+  pace:'节奏偏慢，压缩时长，加快切镜和口播节奏。',
+  cta:'结尾CTA不够强，保留前面内容，强化WhatsApp行动引导。',
+  redo:'整体方向不满意，沿用原始素材和目标，重新做一个完全不同的版本。'
+};
+function openRevision(job){
+  revisionParent=job;
+  $('revisionScope').value='auto';
+  $('revisionText').value='';
+  $('revisionHint').textContent='正在修改 V'+(job.version_number||1)+'。没有提到的部分会尽量保留。';
+  $('revisionModal').classList.add('show');
+}
+$('revisionCancel').onclick=()=>{$('revisionModal').classList.remove('show');revisionParent=null};
+document.querySelectorAll('.revchip').forEach(b=>b.onclick=()=>{
+  $('revisionScope').value=b.dataset.scope;
+  $('revisionText').value=revDefaults[b.dataset.scope]||'';
+  $('revisionText').focus();
+});
+$('revisionSubmit').onclick=async()=>{
+  if(!revisionParent)return;
+  const prompt=$('revisionText').value.trim();
+  if(!prompt){alert('请说一下哪里要改');return}
+  const btn=$('revisionSubmit');btn.disabled=true;btn.textContent='正在创建新版本…';
+  try{
+    const r=await api('create_revision',{
+      parent_job_id:revisionParent.id,
+      revision_prompt:prompt,
+      revision_scope:$('revisionScope').value||'auto'
+    });
+    $('revisionModal').classList.remove('show');
+    revisionParent=null;
+    await loadJobs();
+    alert('V'+(r.job.version_number||'2')+' 已提交，系统只按你的修改意见继续优化。');
+  }catch(e){alert('创建优化版本失败：'+e.message)}
+  finally{btn.disabled=false;btn.textContent='生成下一版'}
+};
 async function loadJobs(){
   const data=await api('list_jobs');
   $('jobs').innerHTML=data.jobs?.length?data.jobs.map(j=>`
     <div class="job">
-      <div class="jobhead"><b>${escapeHtml(j.project_name)}</b><span class="pill">${label(j.status)}</span></div>
+      <div class="jobhead"><b>${escapeHtml(j.project_name)} <span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
       <div class="meta">${escapeHtml(j.stage||'')} · ${j.progress||0}% · ${new Date(j.created_at).toLocaleString()}</div>
       <div id="job-${j.id}"><button class="smallbtn detail" data-id="${j.id}" style="margin-top:8px">查看</button></div>
     </div>`).join(''):'<div class="empty">还没有任务。</div>';
@@ -257,9 +326,13 @@ async function loadJobs(){
 async function showJob(id){
   const root=$('job-'+id);root.innerHTML='<div class="meta">读取中…</div>';
   const {job}=await api('status',{job_id:id});
-  let h='<div class="meta">'+escapeHtml(job.stage||'')+' · '+(job.progress||0)+'%</div>';
+  let h='<div class="meta">V'+(job.version_number||1)+' · '+escapeHtml(job.stage||'')+' · '+(job.progress||0)+'%</div>';
+  if(job.revision_prompt)h+='<div class="meta" style="margin-top:6px">本版修改：'+escapeHtml(job.revision_prompt)+'</div>';
   if(job.output_files?.length){
     h+=job.output_files.map((o,i)=>o.path?'<button class="result result-download" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">查看成片 '+(i+1)+'</button>':'').join(' ');
+    h+='<div class="revactions">'+
+      (job.accepted_at?'<span class="accepted">✓ 这一版已确认</span>':'<button class="revbtn primarymini accept-job">👍 满意，完成</button>')+
+      '<button class="revbtn revise-job">继续优化</button></div>';
   } else if(job.status==='failed')h+='<div class="meta" style="color:#ff9a9a">'+escapeHtml(job.error_message||'任务失败')+'</div>';
   else h+='<div class="meta">制作完成后，成片会出现在这里。</div>';
   root.innerHTML=h;
@@ -271,6 +344,11 @@ async function showJob(id){
     const u=URL.createObjectURL(data);
     window.open(u,'_blank');
     setTimeout(()=>URL.revokeObjectURL(u),60000);
+  });
+  root.querySelector('.revise-job')?.addEventListener('click',()=>openRevision(job));
+  root.querySelector('.accept-job')?.addEventListener('click',async()=>{
+    try{await api('accept_job',{job_id:job.id});await showJob(job.id);await loadJobs();}
+    catch(e){alert('确认失败：'+e.message)}
   });
 }
 function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
