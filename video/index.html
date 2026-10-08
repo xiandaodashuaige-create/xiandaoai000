@@ -96,6 +96,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 .box p{margin:0 0 16px;color:var(--muted);font-size:12px;line-height:1.6}
 .box input{width:100%;background:#07140f;color:white;border:1px solid #2b4d3e;border-radius:11px;padding:12px 13px;outline:0}
 .box button{margin-top:10px;width:100%;border:0;border-radius:11px;padding:12px;background:var(--green);color:#052114;font-weight:900;cursor:pointer}
+.box button.secondary{background:transparent;color:#b9c9c0;border:1px solid #2b4d3e;font-weight:700}
 @media(max-width:600px){
   .page{padding-top:18px}.top{margin-bottom:40px}.hero{text-align:left}.hero p{font-size:13px}
   .composer{padding:14px;border-radius:20px}.drop{min-height:130px}
@@ -288,6 +289,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <p>输入内部访问口令。第一次输入后，本次浏览器会记住，不需要每次填写。</p>
     <input id="access" type="password" placeholder="访问口令">
     <button id="loginBtn">进入工作台</button>
+    <button id="previewBtn" class="secondary" type="button">先看看制作方式</button>
   </div>
 </div>
 
@@ -319,6 +321,7 @@ setMode(sessionStorage.getItem('lulianVideoMode')||'remix');
 function showModal(){ $('modal').classList.add('show') }
 function hideModal(){ $('modal').classList.remove('show') }
 $('openAccess').onclick=showModal;
+$('previewBtn').onclick=hideModal;
 $('loginBtn').onclick=async()=>{
   const v=$('access').value.trim();
   if(!v)return;
