@@ -24,7 +24,21 @@ a{color:inherit}
 .hero{text-align:center;margin-bottom:28px}
 .hero h1{font-size:clamp(34px,7vw,56px);line-height:1.08;margin:0 0 14px;letter-spacing:-1.8px}
 .hero p{color:var(--muted);font-size:15px;line-height:1.7;margin:0}
+.modepicker{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 16px}
+.modecard{display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);background:#0a1913;color:var(--text);border-radius:18px;padding:15px;cursor:pointer;transition:.2s}
+.modecard:hover{border-color:#3c7559;transform:translateY(-1px)}
+.modecard.active{border-color:var(--green);background:linear-gradient(135deg,#10291e,#0b1d16);box-shadow:0 0 0 1px #35d07f33}
+.modeicon{width:44px;height:44px;border-radius:14px;background:#153627;display:grid;place-items:center;font-size:20px}
+.modecard b{display:block;font-size:15px}.modecard small{display:block;color:var(--muted);font-size:11px;line-height:1.55;margin-top:4px}
+.newtag{align-self:start;background:var(--yellow);color:#2d2300;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:900;letter-spacing:.06em}
+.modepanel{display:none}.modepanel.active{display:block}
 .composer{background:rgba(13,29,23,.95);border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 28px 80px #0005}
+.panelhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:0 0 16px}.panelhead h2{margin:0;font-size:20px}.panelhead p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.modepill{white-space:nowrap;border:1px solid #2c5f48;background:#10281d;color:var(--green2);padding:6px 9px;border-radius:999px;font-size:10px;font-weight:800}
+.storyline{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:0 0 16px}.storypart{border:1px solid #294c3d;background:#091711;border-radius:14px;padding:12px}.storypart span{display:block;color:var(--green2);font-size:10px;font-weight:900;margin-bottom:5px}.storypart b{font-size:12px}.storypart small{display:block;color:var(--muted);font-size:10px;line-height:1.5;margin-top:4px}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.formgrid .wide{grid-column:1/-1}.fieldbox{background:#091711;border:1px solid #203f32;border-radius:14px;padding:12px}.fieldbox>label{display:block;font-size:11px;color:#a8bbb0;margin:0 0 7px;font-weight:800}.fieldbox input,.fieldbox select,.fieldbox textarea{width:100%;border:1px solid #28493b;background:#07140f;color:white;border-radius:10px;padding:10px;outline:0}.fieldbox textarea{min-height:86px;resize:vertical;font-size:13px;padding:11px;line-height:1.55}.fieldbox input:focus,.fieldbox select:focus,.fieldbox textarea:focus{border-color:var(--green)}
+.uploadgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.uploadbox{display:block;border:1px dashed #3c7559;background:#081610;border-radius:14px;padding:13px;cursor:pointer}.uploadbox b{display:block;font-size:12px}.uploadbox small{display:block;color:var(--muted);font-size:10px;line-height:1.5;margin-top:4px}.uploadbox input{width:100%;color:#b7c8be;font-size:10px;margin-top:9px}
+.guardrail{display:grid;grid-template-columns:24px 1fr;gap:9px;align-items:start;border:1px solid #594e27;background:#211d0c;border-radius:14px;padding:12px;margin-top:14px}.guardrail span{color:var(--yellow)}.guardrail b{font-size:12px}.guardrail small{display:block;color:#c6b779;font-size:10px;line-height:1.55;margin-top:3px}
+.costnote{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:10px;color:#91a89b;font-size:10px}.costnote b{color:#d9e8e0}
 .drop{border:1px dashed #3c7559;background:#081610;border-radius:18px;min-height:150px;display:grid;place-items:center;text-align:center;padding:20px;transition:.2s;cursor:pointer}
 .drop.drag{border-color:var(--green);background:#0b2017}
 .plus{width:46px;height:46px;border-radius:15px;background:#153627;display:grid;place-items:center;margin:0 auto 10px;font-size:28px;color:var(--green2)}
@@ -62,6 +76,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 .job:last-child{border:0}
 .jobhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .jobhead b{font-size:13px}
+.jobtype{display:inline-block;margin-left:6px;padding:3px 6px;border-radius:999px;background:#443b10;color:#ffe58f;font-size:9px;vertical-align:1px}
 .pill{font-size:11px;background:#153326;color:var(--green2);padding:4px 8px;border-radius:999px}
 .meta{color:#8fa197;font-size:11px;margin-top:5px;line-height:1.5}
 .result{display:inline-block;margin-top:8px;text-decoration:none;background:#92ecb4;color:#062012;padding:7px 10px;border-radius:9px;font-size:12px;font-weight:800;border:0;cursor:pointer}
@@ -84,6 +99,8 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 @media(max-width:600px){
   .page{padding-top:18px}.top{margin-bottom:40px}.hero{text-align:left}.hero p{font-size:13px}
   .composer{padding:14px;border-radius:20px}.drop{min-height:130px}
+  .modepicker,.formgrid,.uploadgrid,.storyline{grid-template-columns:1fr}.formgrid .wide{grid-column:auto}
+  .modecard{grid-template-columns:44px 1fr}.newtag{display:none}.panelhead{display:block}.modepill{display:inline-block;margin-top:9px}
 }
 </style>
 </head>
@@ -95,11 +112,27 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
   </div>
 
   <section class="hero">
-    <h1>把素材丢进来，<br>告诉我你想做什么。</h1>
-    <p>参考爆款、客户视频、门店素材、Logo 都可以一起上传。<br>系统会先判断你真正要宣传的项目，不会把客户业务改成鹿联自己的业务。</p>
+    <h1>先选制作方式，<br>再把素材交给 AI。</h1>
+    <p>已有素材就做营销混剪；需要 AI 人物和场景，就进入独立的 AI 创意成片。<br>两个模块分开，不会误用客户素材或改变业务主题。</p>
   </section>
 
-  <main class="composer">
+  <section class="modepicker" aria-label="选择视频制作方式">
+    <button class="modecard active" data-mode="remix" type="button">
+      <span class="modeicon">✂️</span>
+      <span><b>真实素材混剪</b><small>沿用原功能：把现有视频剪得更有营销节奏，不生成新人物。</small></span>
+    </button>
+    <button class="modecard" data-mode="ai_hybrid" type="button">
+      <span class="modeicon">✦</span>
+      <span><b>AI 创意成片</b><small>AI 生成开头和结尾，中间穿插客户真实案例与证据素材。</small></span>
+      <span class="newtag">NEW</span>
+    </button>
+  </section>
+
+  <main id="remixPanel" class="composer modepanel active">
+    <div class="panelhead">
+      <div><h2>真实素材混剪</h2><p>只处理你上传的现有素材；适合课程花絮、客户案例、门店与活动视频。</p></div>
+      <span class="modepill">不生成新人物</span>
+    </div>
     <label id="drop" class="drop" for="fileInput">
       <div>
         <div class="plus">＋</div>
@@ -144,6 +177,83 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
       <div class="line"><b id="noticeText">准备中…</b><span id="noticePct" class="muted">0%</span></div>
       <div class="progress"><div id="bar" class="bar"></div></div>
     </div>
+  </main>
+
+  <main id="aiHybridPanel" class="composer modepanel">
+    <div class="panelhead">
+      <div><h2>AI 创意成片</h2><p>适合需要 AI 主持人、AI 场景或缺少开头/结尾镜头的营销广告。</p></div>
+      <span class="modepill">AI 生成＋真实证据</span>
+    </div>
+
+    <div class="storyline" aria-label="默认视频结构">
+      <div class="storypart"><span>01 · HOOK</span><b>AI 生成开头</b><small>人物、口播与画面语义一致，前三秒抓住注意力。</small></div>
+      <div class="storypart"><span>02 · PROOF</span><b>客户真实案例</b><small>课堂、学员、过程与结果，保留真实证据感。</small></div>
+      <div class="storypart"><span>03 · CTA</span><b>AI 生成结尾</b><small>回到同一人物，明确价格、报名方式与行动引导。</small></div>
+    </div>
+
+    <div class="formgrid">
+      <div class="fieldbox">
+        <label for="aiBusiness">这条视频卖什么 *</label>
+        <input id="aiBusiness" placeholder="例如：马来西亚线下 AI 实战培训课">
+      </div>
+      <div class="fieldbox">
+        <label for="aiAudience">想吸引谁 *</label>
+        <input id="aiAudience" placeholder="例如：想用 AI 提效的老板和创业者">
+      </div>
+      <div class="fieldbox">
+        <label for="aiFacts">准确价格 / 币种 / 报名信息 *</label>
+        <input id="aiFacts" placeholder="例如：马币49，WhatsApp 报名；不要写 RMM">
+      </div>
+      <div class="fieldbox">
+        <label for="aiAction">希望客户做什么 *</label>
+        <input id="aiAction" placeholder="例如：点击 WhatsApp 咨询并报名线下课">
+      </div>
+      <div class="fieldbox wide">
+        <label for="aiHook">开头想说什么（可留空，让 AI 起草）</label>
+        <textarea id="aiHook" placeholder="例如：别再只是听别人讲 AI，真正上手做一次，你就知道它能帮你省多少时间。"></textarea>
+      </div>
+      <div class="fieldbox wide">
+        <label for="aiProof">中间要证明什么（可留空，系统从真实素材判断）</label>
+        <textarea id="aiProof" placeholder="例如：展示真实课堂、学员实操、老师指导和学员反馈；声音与画面逐句对应。"></textarea>
+      </div>
+      <div class="fieldbox wide">
+        <label for="aiCta">结尾引导（可留空，让 AI 起草）</label>
+        <textarea id="aiCta" placeholder="例如：想亲手学会，就来线下课。名额有限，现在 WhatsApp 报名。"></textarea>
+      </div>
+      <div class="fieldbox">
+        <label for="aiVoice">语言与声音</label>
+        <select id="aiVoice">
+          <option value="马来西亚华语，真人自然节奏，语速偏快但清晰">马来西亚华语 · 自然真人感</option>
+          <option value="普通话，真人自然节奏，语速偏快但清晰">普通话 · 自然真人感</option>
+          <option value="香港粤语，本地真人自然节奏">香港粤语 · 本地真人感</option>
+        </select>
+      </div>
+      <div class="fieldbox">
+        <label for="aiDuration">目标时长</label>
+        <select id="aiDuration"><option value="30–45秒">30–45 秒（推荐）</option><option value="20–30秒">20–30 秒</option><option value="15秒">15 秒</option></select>
+      </div>
+      <div class="fieldbox">
+        <label for="aiOutputCount">先生成几个版本</label>
+        <select id="aiOutputCount"><option value="1">1 个版本（先省额度）</option><option value="3">3 个 Hook 版本</option></select>
+      </div>
+      <div class="fieldbox">
+        <label for="aiProjectName">项目名称</label>
+        <input id="aiProjectName" placeholder="不填也可以，系统自动命名">
+      </div>
+    </div>
+
+    <div class="uploadgrid">
+      <label class="uploadbox"><b>① 客户真实案例素材 *</b><small>课堂、学员、服务过程、真实反馈。中段只从这里选证据。</small><input id="aiMainFiles" type="file" accept="video/*,image/*" multiple></label>
+      <label class="uploadbox"><b>② 参考爆款（可选）</b><small>只学习 Hook、节奏、案例穿插和 CTA，不复制原画面。</small><input id="aiReferenceFiles" type="file" accept="video/*" multiple></label>
+      <label class="uploadbox"><b>③ AI 人物参考（推荐）</b><small>上传清晰正脸照，开头与结尾保持同一人物、服装和气质。</small><input id="aiCharacterFiles" type="file" accept="image/*" multiple></label>
+      <label class="uploadbox"><b>④ 品牌与补充资料（可选）</b><small>Logo、海报、课程信息、WhatsApp 截图、产品图或资料包。</small><input id="aiAssetFiles" type="file" accept="video/*,image/*,.zip" multiple></label>
+    </div>
+
+    <div class="guardrail"><span>✓</span><div><b>系统会锁定这条结构，不会随机混剪</b><small>AI 只负责开头、结尾和确实缺失的补位镜头；中段优先真实素材。每一句口播都必须找到对应画面，禁止沿用参考视频原音。</small></div></div>
+    <div class="costnote"><span><b>默认先做 1 版</b>，满意后再从历史任务继续优化，避免整条重做。</span><span>9:16 · 字幕不挡脸 · 干净 BGM · 连续音轨</span></div>
+
+    <div class="actions"><button id="aiSubmitBtn" class="primary">开始 AI 创意成片</button></div>
+    <div id="aiNotice" class="notice"><div class="line"><b id="aiNoticeText">准备中…</b><span id="aiNoticePct" class="muted">0%</span></div><div class="progress"><div id="aiBar" class="bar"></div></div></div>
   </main>
 
   <details class="history">
@@ -195,6 +305,17 @@ let revisionParent=null;
 const saved=sessionStorage.getItem('lulianVideoAccess')||'';
 $('access').value=saved;
 
+function setMode(mode){
+  const safe=mode==='ai_hybrid'?'ai_hybrid':'remix';
+  document.querySelectorAll('.modecard').forEach(b=>b.classList.toggle('active',b.dataset.mode===safe));
+  $('remixPanel').classList.toggle('active',safe==='remix');
+  $('aiHybridPanel').classList.toggle('active',safe==='ai_hybrid');
+  sessionStorage.setItem('lulianVideoMode',safe);
+  document.title=safe==='ai_hybrid'?'AI 创意成片｜鹿联视频员工':'真实素材混剪｜鹿联视频员工';
+}
+document.querySelectorAll('.modecard').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+setMode(sessionStorage.getItem('lulianVideoMode')||'remix');
+
 function showModal(){ $('modal').classList.add('show') }
 function hideModal(){ $('modal').classList.remove('show') }
 $('openAccess').onclick=showModal;
@@ -244,16 +365,19 @@ document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
   t.focus();
 });
 
-async function uploadOne(jobId,file,index,total){
+async function uploadOne(jobId,file,index,total,role='auto',channel='remix'){
   const sign=await api('sign_upload',{job_id:jobId,file_name:file.name,content_type:file.type||'application/octet-stream'});
   const {error}=await sb.storage.from(sign.bucket).upload(sign.path,file,{contentType:file.type||undefined,upsert:false});
   if(error)throw error;
   const pct=Math.round(((index+1)/Math.max(total,1))*85);
-  setStatus('正在上传 '+file.name,pct);
-  return {role:'auto',name:file.name,path:sign.path,size:file.size,type:file.type};
+  if(channel==='ai')setAiStatus('正在上传 '+file.name,pct);else setStatus('正在上传 '+file.name,pct);
+  return {role,name:file.name,path:sign.path,size:file.size,type:file.type};
 }
 function setStatus(text,pct){
   $('notice').classList.add('show');$('noticeText').textContent=text;$('noticePct').textContent=pct+'%';$('bar').style.width=pct+'%';
+}
+function setAiStatus(text,pct){
+  $('aiNotice').classList.add('show');$('aiNoticeText').textContent=text;$('aiNoticePct').textContent=pct+'%';$('aiBar').style.width=pct+'%';
 }
 
 $('submitBtn').onclick=async()=>{
@@ -272,6 +396,63 @@ $('submitBtn').onclick=async()=>{
     $('brief').value='';selected=[];renderFiles();
     await loadJobs();
   }catch(e){setStatus('提交失败：'+e.message,0)}finally{btn.disabled=false}
+};
+
+function aiInputFiles(){
+  const groups=[
+    ['main',[...$('aiMainFiles').files]],
+    ['reference',[...$('aiReferenceFiles').files]],
+    ['asset',[...$('aiCharacterFiles').files]],
+    ['asset',[...$('aiAssetFiles').files]]
+  ];
+  return groups.flatMap(([role,files])=>files.map(file=>({role,file})));
+}
+
+$('aiSubmitBtn').onclick=async()=>{
+  const btn=$('aiSubmitBtn');btn.disabled=true;
+  try{
+    const business=$('aiBusiness').value.trim();
+    const audience=$('aiAudience').value.trim();
+    const facts=$('aiFacts').value.trim();
+    const action=$('aiAction').value.trim();
+    if(!business||!audience||!facts||!action)throw new Error('请先填写业务、目标客户、准确报名信息和行动目标');
+    if(!$('aiMainFiles').files.length)throw new Error('请至少上传一段客户真实案例素材，作为中段证据');
+    const hook=$('aiHook').value.trim()||'由系统根据业务和目标客户起草，前三秒必须有明确利益点或反差，不能空泛。';
+    const proof=$('aiProof').value.trim()||'从客户真实案例素材中提取最能证明课程或服务价值的画面，保留真实现场感。';
+    const cta=$('aiCta').value.trim()||'根据准确报名信息生成清晰行动引导，最后一秒仍保持声音与 CTA 画面。';
+    const brief=`【工作流：AI创意成片｜独立于真实素材混剪】
+业务主题：${business}
+目标客户：${audience}
+准确事实：${facts}
+客户行动：${action}
+目标时长：${$('aiDuration').value}，全程 9:16
+语言声音：${$('aiVoice').value}
+
+【锁定结构】
+1. AI生成开头 Hook：${hook}
+2. 客户真实案例证据：${proof}
+3. AI生成结尾 CTA：${cta}
+
+【不可违反】
+- 开头与结尾保持同一 AI 人物、脸、服装和整体摄影风格；有自然眨眼、头部、身体与手势动作，不要静态照片张嘴。
+- 中文嘴型与口播同步；声音必须自然、有人类节奏，不能沿用参考视频原音。
+- 中段优先且必须使用 role=main 的客户真实素材；AI 只补确实缺失的镜头，不得把真实案例替换成虚构案例。
+- 逐句检查语义与画面，声音说什么，画面就证明什么；禁止随机拼接和无关 B-roll。
+- 参考爆款只学习 Hook、节奏、字幕、证据穿插和 CTA 结构，不复制原画面、人物、声音或原文。
+- 价格、币种、课程信息和报名方式只能使用“准确事实”及上传资料；禁止把马币写成 RMM。
+- 字幕只保留关键营销词，不挡脸；BGM 干净并自动压低；全片声音连续，结尾不静音、不黑屏。
+- 成片前自动检查：人物清晰、嘴型自然、动作真实、镜头衔接、声画匹配、字幕安全区、连续音轨和 CTA。`;
+    const autoName='AI创意成片 · '+business+' · '+new Date().toLocaleDateString();
+    setAiStatus('正在创建 AI 创意任务…',2);
+    const init=await api('init_job',{project_name:$('aiProjectName').value.trim()||autoName,brief,output_count:Number($('aiOutputCount').value)});
+    const files=aiInputFiles(),meta=[];
+    for(let i=0;i<files.length;i++)meta.push(await uploadOne(init.job.id,files[i].file,i,files.length,files[i].role,'ai'));
+    setAiStatus('素材已分类，正在提交 AI 生成与真实证据编排…',93);
+    await api('submit_job',{job_id:init.job.id,input_files:meta});
+    setAiStatus('任务已提交，可在下方历史任务查看进度',100);
+    await loadJobs();
+    $('jobs').closest('details').open=true;
+  }catch(e){setAiStatus('提交失败：'+e.message,0)}finally{btn.disabled=false}
 };
 
 const label=s=>({draft:'草稿',uploading:'上传中',queued:'排队中',processing:'制作中',review:'质检中',completed:'已完成',failed:'失败'})[s]||s;
@@ -319,7 +500,7 @@ async function loadJobs(){
   const data=await api('list_jobs');
   $('jobs').innerHTML=data.jobs?.length?data.jobs.map(j=>`
     <div class="job">
-      <div class="jobhead"><b>${escapeHtml(j.project_name)} <span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
+      <div class="jobhead"><b>${escapeHtml(j.project_name)} ${String(j.project_name||'').startsWith('AI创意成片 · ')?'<span class="jobtype">AI创意成片</span>':''}<span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
       <div class="meta">${escapeHtml(j.stage||'')} · ${j.progress||0}% · ${new Date(j.created_at).toLocaleString()}</div>
       <div id="job-${j.id}"><button class="smallbtn detail" data-id="${j.id}" style="margin-top:8px">查看</button></div>
     </div>`).join(''):'<div class="empty">还没有任务。</div>';
