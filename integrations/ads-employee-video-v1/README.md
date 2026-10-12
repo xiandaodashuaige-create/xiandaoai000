@@ -20,16 +20,16 @@ Construct `createAdsEmployeeVideoAdapter` only inside the server process:
 - `resolveBinding({ actorId, tenantId, role, projectRef })` must return the active, authorised `{ tenantId, videoProjectId }` pair or no binding. `projectRef` is an opaque caller-side project reference, not the media project ID. The adapter resolves this binding on every accepted operation and looks up every job/upload reference in that same tenant/project scope.
 - `transport(action, payload, { signal })` must use server-configured API endpoints and credentials from the existing secret store. Keep both in the transport closure; never put them in browser code, requests, examples, logs, or returned errors. The adapter passes only the existing allowlisted media actions and safe payloads.
 - `allowedOrigins` and `signedUrlOrigins` must be exact server-configured origin allowlists. Requests without an exact allowed `Origin` fail closed. A signed download URL is returned only for an allowed HTTPS origin.
-- `persistence` must be the caller's **durable existing store**, not an in-memory map. It implements `reserveOperation`, `completeOperation`, `reconcileOperation`, and `getJobMapping`; upload flow additionally needs `getUploadMapping` and snapshot creation needs `saveSnapshot`.
+- `persistence` must be the caller's **durable existing store**, not an in-memory map. It implements `reserveOperation`, `completeOperation`, `releaseOperation`, `reconcileOperation`, and `getJobMapping`; upload flow additionally needs `getUploadMapping` and snapshot creation needs `saveSnapshot`.
 
 Persistence invariants:
 
-1. Scope every key by the trusted tenant, actor, project reference, and resolved media project. `reserveOperation` must atomically create one reservation for `(scope, operation, idempotencyKey)` and for any supplied `logicalKey`, return `created: true` only to one owner, and reject a changed payload fingerprint. Create uses the task ID as its logical key; submit uses the mapped job; revision uses the parent plus canonical revision request. Thus a pending request cannot be repeated by changing its idempotency key.
+1. Scope every key by the trusted tenant, actor, project reference, and resolved media project. `reserveOperation` must atomically create one reservation for `(scope, operation, idempotencyKey)` and for any supplied `logicalKey`, return `created: true` only to one owner, and reject a changed payload fingerprint. Create uses the task ID as its logical key; submit and revision each use the mapped parent job as their logical key. The media service only creates one revision child per parent, so a different prompt for that same parent conflicts instead of silently returning an unrelated child. Thus a pending request cannot be repeated by changing its idempotency key.
 2. `completeOperation` must atomically persist the safe result and any `details.jobMapping` / `details.uploadMapping`. Job mappings retain the original media job ID, task ID, project ID, and parent job reference. Upload mappings retain the media job/project, server-issued input bucket/path, and metadata.
-3. `reconcileOperation` handles a non-completed reservation by reading durable caller state and/or the existing media service. It may return `{ state: 'completed', result }` only when it proves the original result. If the outcome cannot be proven, return no result; the adapter returns `reconciliation_required` and never repeats that write with a new key.
+3. `releaseOperation` removes a reservation only for an explicit, definitive upstream rejection (or a local pre-write snapshot failure). `reconcileOperation` handles other non-completed reservations by reading durable caller state and/or the existing media service. It may return `{ state: 'completed', result }` only when it proves the original result. If the outcome cannot be proven, return no result; the adapter returns `reconciliation_required` and never repeats that write with a new key.
 4. `saveSnapshot` stores the immutable v1 brief snapshot by task/version. Do not write these per-task values back into the shared media project/customer profile.
 
-The reservation must be atomic across concurrent server instances. A lost response after the media service accepted a create/submit/revision/feedback is an ambiguous write; keep its reservation for reconciliation rather than allowing another generation attempt. Read-only status and signed-URL reads have at most two retries, with a bounded per-call timeout and short exponential backoff. Writes are never automatically retried.
+The reservation must be atomic across concurrent server instances. A lost response, timeout, or otherwise ambiguous failure after a create/submit/revision/feedback is an ambiguous write; keep its reservation for reconciliation rather than allowing another generation attempt. Explicit 4xx rejections and local pre-write snapshot failures release the reservation; writes are still never automatically retried. Read-only status and signed-URL reads have at most two retries, with a bounded per-call timeout and short exponential backoff.
 
 ### Request boundary
 
@@ -73,7 +73,7 @@ Allowlisted operations:
 | `submit_job` | `submit_job` | mapped job, idempotency key, previously issued upload references |
 | `status` / `refresh` | `status` | mapped job |
 | `download_url` | `status`, then `download_url` | mapped job and an asset reference in its output manifest |
-| `create_revision` | `create_revision` | completed parent mapping, idempotency key, revision prompt/scope |
+| `create_revision` | `create_revision` | completed parent mapping, idempotency key, one revision per parent, prompt/scope |
 | `record_feedback` | `record_feedback` | authorised project, optional mapped job, idempotency key and feedback |
 
 `worker_update`, acceptance, generic admin operations, arbitrary bucket/path signing, and advertising publication approval are deliberately not exposed. Feedback uses adapter-owned event types and the authenticated actor; it does not silently change shared project preferences. Media acceptance, if later required by a staff workflow, is distinct from approval to publish an advertisement and is outside this adapter.
@@ -109,7 +109,7 @@ The minimum customer result card should show:
 - [ ] Worker heartbeat and offline/timeout/fallback behavior observed without interrupting current workers.
 - [ ] `image_poster` cloud-poster routing/local fallback and video local routing verified; do not infer all rendering runs in cloud.
 - [ ] Existing `/video/` page and local rendering use remain unchanged and operational.
-- [ ] Revision from an authorised completed job retains parent/version linkage and cannot duplicate after an ambiguous response.
+- [ ] Revision from an authorised completed job retains parent/version linkage, rejects a changed request for an existing parent revision, and cannot duplicate after an ambiguous response.
 - [ ] Staff result feedback is scoped and does not approve ad publication.
 
 Before any live canary, separately approve one owned-asset test project, named operator/owner, endpoint/credential controls, monitoring and rollback. Any production auth/DB change, credential rotation, advertising approval, or deployment requires its own owner-approved gate. If the caller's existing store cannot supply durable atomic idempotency/mappings, the smallest follow-up is a separately reviewed, additive persistence change in that caller's store with unique scoped idempotency-key and logical-key constraints, staged read/reconcile path, and rollback by disabling the adapter while retaining rows for audit; no video-service migration is required by this isolated draft. Owner for that future gate: Ads Employee integration owner together with the existing media-service owner.

@@ -19,10 +19,11 @@ const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_READ_RETRIES = 2;
 
 class AdapterError extends Error {
-  constructor(status, code) {
+  constructor(status, code, definitive = false) {
     super(code);
     this.status = status;
     this.code = code;
+    this.definitive = definitive;
   }
 }
 
@@ -193,6 +194,7 @@ export function createAdsEmployeeVideoAdapter({
   }
   if (!persistence || typeof persistence.reserveOperation !== 'function'
     || typeof persistence.completeOperation !== 'function'
+    || typeof persistence.releaseOperation !== 'function'
     || typeof persistence.getJobMapping !== 'function'
     || typeof persistence.reconcileOperation !== 'function') {
     throw new TypeError('durable persistence hooks are required');
@@ -219,10 +221,13 @@ export function createAdsEmployeeVideoAdapter({
         ]);
         if (!result || !Number.isInteger(result.status)) fail(502, 'invalid_upstream_response');
         if (result.status < 200 || result.status >= 300) {
-          const error = result.status === 401 ? new AdapterError(401, 'upstream_unauthorized')
-            : result.status === 403 ? new AdapterError(403, 'upstream_forbidden')
-              : result.status === 429 ? new AdapterError(429, 'upstream_rate_limited')
-                : new AdapterError(502, 'upstream_error');
+          const definitive = [400, 401, 403, 404, 409, 422, 429].includes(result.status);
+          const error = result.status === 401 ? new AdapterError(401, 'upstream_unauthorized', true)
+            : result.status === 403 ? new AdapterError(403, 'upstream_forbidden', true)
+              : result.status === 429 ? new AdapterError(429, 'upstream_rate_limited', true)
+                : result.status === 409 ? new AdapterError(409, 'upstream_conflict', true)
+                  : definitive ? new AdapterError(502, 'upstream_rejected', true)
+                    : new AdapterError(502, 'upstream_error');
           if (read && attempt < retries && [429, 502].includes(error.status)) {
             await sleep(100 * (2 ** attempt++));
             continue;
@@ -295,7 +300,19 @@ export function createAdsEmployeeVideoAdapter({
       if (reconciled?.state === 'completed' && reconciled.result) return reconciled.result;
       fail(409, 'reconciliation_required');
     }
-    const result = await invoke(reservation.record);
+    let result;
+    try {
+      result = await invoke(reservation.record);
+    } catch (error) {
+      if (error instanceof AdapterError && error.definitive) {
+        await persistence.releaseOperation({
+          scope,
+          key: storedKey,
+          fingerprint: bodyFingerprint,
+        });
+      }
+      throw error;
+    }
     const additionalDetails = await completionDetails(result, reservation.record);
     await persistence.completeOperation({
       scope,
@@ -365,19 +382,23 @@ export function createAdsEmployeeVideoAdapter({
       const projectName = text(input.projectName, 'project_name', 200);
       const createPayload = { projectName, mode: selectedMode, snapshot };
       const jobRefForCreate = createId();
+      if (typeof persistence.saveSnapshot !== 'function') fail(503, 'snapshot_store_unavailable');
       return await mutation(scope, operation, idempotencyKey, createPayload, {
         logicalKey: `task:${canonicalTaskId}`,
         jobRef: jobRefForCreate,
         taskId: canonicalTaskId,
         snapshot,
       }, async (record) => {
-        if (typeof persistence.saveSnapshot !== 'function') fail(503, 'snapshot_store_unavailable');
-        await persistence.saveSnapshot({
-          scope,
-          taskId: canonicalTaskId,
-          version: snapshot.version,
-          snapshot,
-        });
+        try {
+          await persistence.saveSnapshot({
+            scope,
+            taskId: canonicalTaskId,
+            version: snapshot.version,
+            snapshot,
+          });
+        } catch {
+          throw new AdapterError(503, 'snapshot_store_unavailable', true);
+        }
         const response = await call('init_job', {
           video_project_id: scope.videoProjectId,
           project_name: projectName,
@@ -508,7 +529,7 @@ export function createAdsEmployeeVideoAdapter({
       const revisionPayload = { jobRef, prompt: revisionPrompt, scope: revisionScope };
       const revisionRef = createId();
       return mutation(scope, operation, idempotencyKey, revisionPayload, {
-        logicalKey: `revision:${jobRef}:${fingerprint(revisionPayload)}`,
+        logicalKey: `revision:${jobRef}`,
         jobRef: revisionRef,
         taskId: parent.taskId,
         parentJobRef: jobRef,
@@ -519,6 +540,11 @@ export function createAdsEmployeeVideoAdapter({
           revision_scope: revisionScope,
         });
         if (!response.job || typeof response.job.id !== 'string') fail(502, 'missing_revision_job');
+        if (response.job.parent_job_id !== parent.mediaJobId
+          || response.job.revision_prompt !== revisionPrompt
+          || response.job.revision_scope !== revisionScope) {
+          throw new AdapterError(409, 'revision_already_exists', true);
+        }
         return mediaResult(response.job, parent.taskId, record.details.jobRef, jobRef);
       }, (result, record) => ({
         jobMapping: {

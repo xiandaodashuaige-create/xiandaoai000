@@ -63,6 +63,13 @@ function fakePersistence() {
         uploads.set(uploadKey(scope, details.uploadMapping.jobRef, details.uploadMapping.uploadRef), details.uploadMapping);
       }
     },
+    async releaseOperation({ scope, key, fingerprint }) {
+      const id = keyFor(scope, key);
+      const record = operations.get(id);
+      if (!record || record.fingerprint !== fingerprint) return;
+      operations.delete(id);
+      if (record.logicalKey) logicalOperations.delete(keyFor(scope, record.logicalKey));
+    },
     async getJobMapping({ scope, jobRef }) {
       return jobs.get(mappingKey(scope, jobRef)) || null;
     },
@@ -124,7 +131,16 @@ function defaultTransport(action, body) {
   if (action === 'status') {
     return { status: 200, body: syntheticJobEnvelope(body.job_id === syntheticRevisionJob.id ? syntheticRevisionJob : syntheticCompletedJob) };
   }
-  if (action === 'create_revision') return { status: 200, body: syntheticJobEnvelope(syntheticRevisionJob) };
+  if (action === 'create_revision') {
+    return {
+      status: 200,
+      body: syntheticJobEnvelope({
+        ...syntheticRevisionJob,
+        revision_prompt: body.revision_prompt,
+        revision_scope: body.revision_scope,
+      }),
+    };
+  }
   if (action === 'download_url') {
     return {
       status: 200,
@@ -326,6 +342,14 @@ test('repeated submit and revision keys reuse stored results; an ambiguous write
   }));
   assert.deepEqual(secondRevision, firstRevision);
   assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
+  const changedRevision = await h.handler(request('create_revision', {
+    jobRef,
+    idempotencyKey: 'revision-different-prompt',
+    input: { prompt: 'Different change', scope: 'cta' },
+  }));
+  assert.equal(changedRevision.status, 409);
+  assert.equal(changedRevision.body.error, 'idempotency_conflict');
+  assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
 
   const ambiguous = harness({
     persistence: fakePersistence(),
@@ -340,6 +364,51 @@ test('repeated submit and revision keys reuse stored results; an ambiguous write
   assert.equal(retry.body.error, 'reconciliation_required');
   assert.equal(ambiguous.calls.filter((call) => call.action === 'init_job').length, 1);
   assert.doesNotMatch(JSON.stringify(first), /fixture transport detail/);
+
+  let rejectOnce = true;
+  const definitive = harness({
+    transport: async (action, body) => {
+      if (action === 'init_job' && rejectOnce) {
+        rejectOnce = false;
+        return { status: 403, body: { ok: false, error: 'synthetic rejection detail' } };
+      }
+      return defaultTransport(action, body);
+    },
+  });
+  const rejected = await createJob(definitive);
+  assert.equal(rejected.body.error, 'upstream_forbidden');
+  const retried = await definitive.handler(createRequest({ idempotencyKey: 'create-key-after-rejection' }));
+  assert.equal(retried.status, 200);
+  assert.equal(definitive.calls.filter((call) => call.action === 'init_job').length, 2);
+});
+
+test('a pre-existing mismatched revision from the media service is rejected, not relinked', async () => {
+  const h = harness({
+    transport: async (action, body) => {
+      if (action === 'create_revision') {
+        return {
+          status: 200,
+          body: syntheticJobEnvelope({
+            ...syntheticRevisionJob,
+            parent_job_id: syntheticUploadingJob.id,
+            revision_prompt: 'an earlier unrelated request',
+            revision_scope: 'auto',
+          }),
+        };
+      }
+      return defaultTransport(action, body);
+    },
+  });
+  const created = await createJob(h);
+  const response = await h.handler(request('create_revision', {
+    jobRef: created.body.result.jobRef,
+    idempotencyKey: 'revision-key-1',
+    input: { prompt: 'New requested change', scope: 'hook' },
+  }));
+  assert.equal(response.status, 409);
+  assert.equal(response.body.error, 'revision_already_exists');
+  assert.equal(h.persistence.jobs.size, 1);
+  assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
 });
 
 test('queued and incomplete completed records never claim a final asset; signed URLs expire explicitly', async () => {
