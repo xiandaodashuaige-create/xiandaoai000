@@ -13,6 +13,50 @@
 - 广告海报（`image_poster`，广告员工已有原生图片链路时优先复用原链路）；
 - 配音、字幕、BGM、CTA、版本优化和最终文件输出。
 
+## 交互形态：统一聊天窗口中的 AI 视频员工
+
+视频能力不以独立后台页面作为客户主要入口。它在广告员工的统一聊天窗口中注册为一个可被编排器调度的角色：
+
+```text
+客户 / 内部员工
+  → 广告员工统一对话编排器
+  → AI 视频员工（role: ai_video_employee）
+  → CreativeVideoProvider
+  → 视频任务、进度、版本和成片
+  → 回到同一聊天窗口
+```
+
+AI 视频员工负责理解视频需求、检查缺失信息、提出最少必要问题、生成结构化命令、解释进度、比较版本和接收修改意见。它不能直接接触 Provider 密钥，也不能用自由文本绕过确定性命令、项目权限和审批。
+
+建议对话意图：
+
+- `CREATE_VIDEO`：新建混剪或 AI＋真实素材视频；
+- `REVISE_VIDEO`：根据上一版和员工反馈生成下一版；
+- `GET_VIDEO_STATUS`：查询任务进度和失败原因；
+- `COMPARE_VIDEO_VERSIONS`：比较多个成片版本；
+- `ACCEPT_VIDEO`：确认一个版本进入 CreativeVersion 与审批链路。
+
+每次工具调用必须带由服务端生成的 `tenantId`、`projectId`、`conversationSessionId`、`correlationId` 和 `idempotencyKey`。这些字段不能由模型从用户文字中自由填写。
+
+角色返回统一事件：`STARTED`、`PROGRESS`、`NEEDS_INPUT`、`COMPLETED`、`FAILED`、`APPROVAL_REQUIRED`。聊天窗口负责展示；视频 Provider 只返回结构化状态，不直接生成界面文案或执行 Meta 操作。
+
+## 每个客户独立资料库
+
+视频员工的检索、记忆、素材和结果以 `tenantId + projectId` 为强制命名空间。不同客户、同一客户的不同项目，也不能默认共用原始资料。
+
+每个项目资料库至少分为：
+
+1. 已确认业务事实：项目、服务、市场、语言、价格、优惠、CTA、禁止承诺；
+2. 品牌资料：Logo、颜色、字体、语气、人物与视觉限制；
+3. 客户素材：真实视频、图片、案例、授权范围、checksum 与来源；
+4. 视频经验：已接受脚本、Hook、镜头、配音、字幕和节奏偏好；
+5. 版本与反馈：任务、成片、修改意见、拒绝原因和最终接受版本；
+6. 结果信息：对应 Meta CreativeVersion、平台表现和客户确认的业务结果。
+
+资料检索必须由已验证的会话上下文注入 `tenantId/projectId` 过滤条件；不得让模型通过提示词选择任意客户资料库。原始客户素材、文案、联系人、案例、反馈和成片禁止跨租户检索或训练。未来需要跨客户学习时，只能使用客户同意、去标识、达到最小样本量并保留来源与置信度的聚合模式。
+
+对话历史和长期项目记忆分开：聊天消息属于会话；可复用规则必须经过确认后写入该项目资料库，并记录来源消息、操作者和时间，不能把每句聊天自动当成长期事实。
+
 ## 当前可用接口
 
 服务入口：Supabase Edge Function `video-agent-v0`。
@@ -53,8 +97,9 @@ content-type: application/json
 1. `CreativeVideoProvider` application port；
 2. 服务端 `VideoAgentHttpProvider` adapter；
 3. `/api/internal/creative/video/*` 同源路由；
-4. 在客户项目工作结果页增加独立的“广告视频”卡片；
-5. 已验收 MP4 作为创意版本产物保存，不能绕过现有客户确认和 Meta PAUSED 创建门禁。
+4. 在现有 conversation contract 与 guarded command bridge 中注册 `ai_video_employee` 角色和视频意图；
+5. 同一聊天窗口展示任务进度、成片、版本比较、修改和接受动作；工作结果页只作为可选的持久结果入口；
+6. 已验收 MP4 作为创意版本产物保存，不能绕过现有客户确认和 Meta PAUSED 创建门禁。
 
 浏览器只能携带广告员工自己的安全会话。广告员工服务端根据已验证的 `tenantId`、`projectId`、`actorUserId` 调用视频 Provider；不得把视频工厂员工令牌下发给浏览器。
 
@@ -89,6 +134,8 @@ content-type: application/json
 8. 接入广告员工现有 CreativeVersion lineage 和审批快照；
 9. 内部 feature flag 默认关闭，先在 Staging 单项目验证；
 10. 完成跨租户 IDOR、重复提交、刷新恢复、过期链接及 390px/桌面浏览器验收。
+11. 对话会话、角色工具调用和项目资料检索全部绑定服务端解析的 `tenantId/projectId`；
+12. 为“聊天内容写入长期项目记忆”增加显式确认、来源和审计，不自动污染客户资料库。
 
 ## 环境变量
 
@@ -105,6 +152,8 @@ VIDEO_AGENT_ACCESS=<server-only secret>
 ## V1 验收
 
 - 广告员工已登录用户只能看到自己项目的视频任务；
+- 在同一聊天窗口中可以点名或由编排器选择“AI 视频员工”，无需进入另一套后台；
+- 视频角色只接收服务端绑定的客户资料库，不能读取或猜测其他客户资料；
 - 任务来源事实与广告员工已确认事实一致；
 - 可上传客户素材、提交任务、刷新后恢复进度、查看 MP4、提出修改并生成 V2；
 - 接受版本后形成带 checksum 的 CreativeVersion，仍需独立审批才能进入 Meta 创建；
