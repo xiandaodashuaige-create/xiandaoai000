@@ -4,7 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const PUBLIC_KEY = "sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ";
 const INPUT_BUCKET = "video-agent-inputs";
 const RESULT_BUCKET = "video-agent-results";
-const ACCESS_HASH = "f8be225d581edd163be04866ccf14d262f24d519fd6b3f33aa6c885c276c0dd6";
+const EXPECTED_DIGEST = Deno.env.get("VIDEO_AGENT_ACCESS_DIGEST") ?? "";
 const CLOUD_WORKER_URL = "https://www.xiandaoai.com/api/video-worker";
 
 const cors = {
@@ -14,9 +14,26 @@ const cors = {
   "Content-Type": "application/json; charset=utf-8",
 };
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: cors });
-async function sha256(text: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+function hexToBytes(hex: string): Uint8Array | null {
+  if (!/^[0-9a-f]{64}$/i.test(hex)) return null;
+  const bytes = new Uint8Array(32);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+async function accessMatches(access: string): Promise<boolean> {
+  const expected = hexToBytes(EXPECTED_DIGEST);
+  if (!expected) return false;
+
+  const actual = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(access)),
+  );
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    difference |= actual[index] ^ expected[index];
+  }
+  return difference === 0;
 }
 function errMsg(error: any) {
   return error?.message || error?.details || error?.hint || "request_failed";
@@ -30,7 +47,7 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
 
   const access = req.headers.get("x-video-access") || body.access_code || "";
-  if (!access || await sha256(access) !== ACCESS_HASH) return json({ error: "unauthorized" }, 401);
+  if (!access || !(await accessMatches(access))) return json({ error: "unauthorized" }, 401);
 
   const url = Deno.env.get("SUPABASE_URL") || "https://ejspsxjeelhsevldmnhl.supabase.co";
   const sb = createClient(url, PUBLIC_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
