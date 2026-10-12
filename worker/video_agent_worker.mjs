@@ -244,7 +244,9 @@ function board(job,rel,d){
   };
 }
 function briefValue(brief,label,fallback=''){
-  const m=String(brief||'').match(new RegExp(label+'[：:]([^\\n]+)'));
+  const text=String(brief||'');
+  const request=text.includes('【本次制作需求】')?text.split('【本次制作需求】').slice(1).join('【本次制作需求】'):text;
+  const m=request.match(new RegExp(label+'[：:]([^\\n]+)'));
   return m?m[1].trim():fallback;
 }
 async function processPosterJob(job){
