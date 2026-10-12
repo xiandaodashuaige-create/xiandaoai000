@@ -1,0 +1,185 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const PUBLIC_KEY = "sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ";
+const INPUT_BUCKET = "video-agent-inputs";
+const RESULT_BUCKET = "video-agent-results";
+const ACCESS_HASH = "4ad67f2712b4dcb0f6b0061975b5c815927eb75a9c5bc1e7df6f864e1ed17615";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-video-access",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json; charset=utf-8",
+};
+const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: cors });
+async function sha256(text: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function errMsg(error: any) {
+  return error?.message || error?.details || error?.hint || "request_failed";
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
+
+  const access = req.headers.get("x-video-access") || body.access_code || "";
+  if (!access || await sha256(access) !== ACCESS_HASH) return json({ error: "unauthorized" }, 401);
+
+  const url = Deno.env.get("SUPABASE_URL") || "https://ejspsxjeelhsevldmnhl.supabase.co";
+  const sb = createClient(url, PUBLIC_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const action = String(body.action || "");
+
+  try {
+    if (action === "auth") {
+      const { data, error } = await sb.rpc("video_agent_check_access", { p_access: access });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return data === true ? json({ ok: true }) : json({ error: "unauthorized" }, 401);
+    }
+
+    if (action === "list_projects") {
+      const { data, error } = await sb.rpc("video_agent_list_projects", { p_access: access });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, projects: data || [] });
+    }
+
+    if (action === "get_project") {
+      const { data, error } = await sb.rpc("video_agent_get_project", {
+        p_access: access,
+        p_project_id: String(body.project_id || ""),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, project: data });
+    }
+
+    if (action === "create_project" || action === "update_project") {
+      const params: Record<string, unknown> = {
+        p_access: access,
+        p_project_name: String(body.project_name || ""),
+        p_client_name: String(body.client_name || ""),
+        p_business_type: String(body.business_type || ""),
+        p_business_summary: String(body.business_summary || ""),
+        p_target_audience: String(body.target_audience || ""),
+        p_offer_facts: String(body.offer_facts || ""),
+        p_cta: String(body.cta || ""),
+        p_default_language: String(body.default_language || "普通话"),
+        p_must_include: String(body.must_include || ""),
+        p_must_exclude: String(body.must_exclude || ""),
+      };
+      if (action === "update_project") params.p_project_id = String(body.project_id || "");
+      const { data, error } = await sb.rpc(
+        action === "create_project" ? "video_agent_create_project" : "video_agent_update_project",
+        params,
+      );
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, project: data });
+    }
+
+    if (action === "init_job") {
+      const projectId = String(body.video_project_id || "");
+      const rpc = projectId ? "video_agent_create_project_job" : "video_agent_create_job";
+      const params = projectId ? {
+        p_access: access,
+        p_video_project_id: projectId,
+        p_project_name: String(body.project_name || ""),
+        p_brief: String(body.brief || ""),
+        p_output_count: Number(body.output_count || 1),
+        p_workflow_mode: String(body.workflow_mode || "remix"),
+      } : {
+        p_access: access,
+        p_project_name: String(body.project_name || ""),
+        p_brief: String(body.brief || ""),
+        p_output_count: Number(body.output_count || 1),
+      };
+      const { data, error } = await sb.rpc(rpc, params);
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "list_jobs") {
+      const projectId = String(body.video_project_id || "");
+      const { data, error } = projectId
+        ? await sb.rpc("video_agent_list_project_jobs", { p_access: access, p_video_project_id: projectId })
+        : await sb.rpc("video_agent_list_jobs", { p_access: access });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, jobs: data || [] });
+    }
+
+    if (action === "status" || action === "worker_job") {
+      const { data, error } = await sb.rpc("video_agent_get_job", { p_access: access, p_job_id: String(body.job_id || "") });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "download_url") {
+      const bucket = String(body.bucket || "");
+      const path = String(body.path || "");
+      if (![INPUT_BUCKET, RESULT_BUCKET].includes(bucket)) return json({ error: "invalid_bucket" }, 400);
+      const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
+      if (error || !data?.signedUrl) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, url: data.signedUrl });
+    }
+
+    if (action === "sign_upload" || action === "sign_result_upload") {
+      const bucket = action === "sign_upload" ? INPUT_BUCKET : RESULT_BUCKET;
+      const { data, error } = await sb.rpc("video_agent_issue_path", {
+        p_access: access,
+        p_job_id: String(body.job_id || ""),
+        p_bucket: bucket,
+        p_file_name: String(body.file_name || (bucket === RESULT_BUCKET ? "result.mp4" : "file")),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, bucket, path: data, content_type: String(body.content_type || "application/octet-stream") });
+    }
+
+    if (action === "submit_job") {
+      const { data, error } = await sb.rpc("video_agent_submit_job", {
+        p_access: access,
+        p_job_id: String(body.job_id || ""),
+        p_input_files: Array.isArray(body.input_files) ? body.input_files : [],
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "create_revision") {
+      const { data, error } = await sb.rpc("video_agent_create_revision", {
+        p_access: access,
+        p_parent_job_id: String(body.parent_job_id || ""),
+        p_revision_prompt: String(body.revision_prompt || ""),
+        p_revision_scope: String(body.revision_scope || "auto"),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "accept_job") {
+      const { data, error } = await sb.rpc("video_agent_accept_job", { p_access: access, p_job_id: String(body.job_id || "") });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "worker_update") {
+      const { data, error } = await sb.rpc("video_agent_worker_update", {
+        p_access: access,
+        p_job_id: String(body.job_id || ""),
+        p_status: body.status ?? null,
+        p_progress: body.progress ?? null,
+        p_stage: body.stage ?? null,
+        p_output_files: body.output_files ?? null,
+        p_error_message: body.error_message ?? null,
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    return json({ error: "unknown_action" }, 400);
+  } catch (error) {
+    return json({ error: errMsg(error) }, 500);
+  }
+});
