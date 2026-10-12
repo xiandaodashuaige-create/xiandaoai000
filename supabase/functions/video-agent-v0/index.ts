@@ -110,6 +110,30 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, jobs: data || [] });
     }
 
+    if (action === "record_feedback") {
+      const { data, error } = await sb.rpc("video_agent_record_feedback", {
+        p_access: access,
+        p_video_project_id: String(body.video_project_id || ""),
+        p_job_id: body.job_id ? String(body.job_id) : null,
+        p_actor_id: String(body.actor_id || "employee"),
+        p_event_type: String(body.event_type || "operation"),
+        p_content: String(body.content || ""),
+        p_metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {},
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, feedback: data });
+    }
+
+    if (action === "list_feedback") {
+      const { data, error } = await sb.rpc("video_agent_list_project_feedback", {
+        p_access: access,
+        p_video_project_id: String(body.video_project_id || ""),
+        p_limit: Math.max(1, Math.min(100, Number(body.limit || 30))),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, feedback: data || [] });
+    }
+
     if (action === "status" || action === "worker_job") {
       const { data, error } = await sb.rpc("video_agent_get_job", { p_access: access, p_job_id: String(body.job_id || "") });
       if (error) return json({ error: errMsg(error) }, 500);
