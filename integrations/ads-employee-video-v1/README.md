@@ -73,7 +73,7 @@ Allowlisted operations:
 | `submit_job` | `submit_job` | mapped job, idempotency key, previously issued upload references |
 | `status` / `refresh` | `status` | mapped job |
 | `download_url` | `status`, then `download_url` | mapped job and an asset reference in its output manifest |
-| `create_revision` | `create_revision` | completed parent mapping, idempotency key, one revision per parent, prompt/scope |
+| `create_revision` | `status`, then `create_revision` | completed parent with output manifest, idempotency key, one revision per parent, prompt/scope |
 | `record_feedback` | `record_feedback` | authorised project, optional mapped job, idempotency key and feedback |
 
 `worker_update`, acceptance, generic admin operations, arbitrary bucket/path signing, and advertising publication approval are deliberately not exposed. Feedback uses adapter-owned event types and the authenticated actor; it does not silently change shared project preferences. Media acceptance, if later required by a staff workflow, is distinct from approval to publish an advertisement and is outside this adapter.
@@ -109,7 +109,7 @@ The minimum customer result card should show:
 - [ ] Worker heartbeat and offline/timeout/fallback behavior observed without interrupting current workers.
 - [ ] `image_poster` cloud-poster routing/local fallback and video local routing verified; do not infer all rendering runs in cloud.
 - [ ] Existing `/video/` page and local rendering use remain unchanged and operational.
-- [ ] Revision from an authorised completed job retains parent/version linkage, rejects a changed request for an existing parent revision, and cannot duplicate after an ambiguous response.
+- [ ] Revision from an authorised completed job with an output manifest retains parent/version linkage, rejects a changed request for an existing parent revision, and cannot duplicate after an ambiguous response.
 - [ ] Staff result feedback is scoped and does not approve ad publication.
 
 Before any live canary, separately approve one owned-asset test project, named operator/owner, endpoint/credential controls, monitoring and rollback. Any production auth/DB change, credential rotation, advertising approval, or deployment requires its own owner-approved gate. If the caller's existing store cannot supply durable atomic idempotency/mappings, the smallest follow-up is a separately reviewed, additive persistence change in that caller's store with unique scoped idempotency-key and logical-key constraints, staged read/reconcile path, and rollback by disabling the adapter while retaining rows for audit; no video-service migration is required by this isolated draft. Owner for that future gate: Ads Employee integration owner together with the existing media-service owner.

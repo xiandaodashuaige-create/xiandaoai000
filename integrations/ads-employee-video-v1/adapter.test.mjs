@@ -438,6 +438,30 @@ test('an incomplete parent does not reserve the revision key and can be revised 
   assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
 });
 
+test('a completed parent without a valid output manifest cannot be revised', async () => {
+  const h = harness({
+    transport: async (action, body) => {
+      if (action === 'status') {
+        return {
+          status: 200,
+          body: syntheticJobEnvelope({ ...syntheticCompletedJob, output_files: [] }),
+        };
+      }
+      return defaultTransport(action, body);
+    },
+  });
+  const created = await createJob(h);
+  const revision = await h.handler(request('create_revision', {
+    jobRef: created.body.result.jobRef,
+    idempotencyKey: 'revision-without-output',
+    input: { prompt: 'Change the opening', scope: 'hook' },
+  }));
+  assert.equal(revision.status, 409);
+  assert.equal(revision.body.error, 'parent_output_missing');
+  assert.equal([...h.persistence.operations.values()].some((operation) => operation.details.logicalKey?.startsWith('revision:')), false);
+  assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 0);
+});
+
 test('queued and incomplete completed records never claim a final asset; signed URLs expire explicitly', async () => {
   const h = harness({
     transport: async (action, body) => {

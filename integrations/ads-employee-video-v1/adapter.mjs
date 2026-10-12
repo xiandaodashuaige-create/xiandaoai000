@@ -522,8 +522,9 @@ export function createAdsEmployeeVideoAdapter({
     }
 
     if (operation === 'create_revision') {
-      const { mapping: parent, job: parentJob } = await readStatus(scope, jobRef, taskId);
+      const { mapping: parent, job: parentJob, result: parentResult } = await readStatus(scope, jobRef, taskId);
       if (parentJob.status !== 'completed') fail(409, 'parent_job_not_completed');
+      if (!parentResult.completionConfirmed) fail(409, 'parent_output_missing');
       const revisionPrompt = text(input.prompt, 'revision_prompt', 4000);
       const revisionScope = text(input.scope || 'auto', 'revision_scope', 40);
       if (!REVISION_SCOPES.has(revisionScope)) fail(400, 'unsupported_revision_scope');
