@@ -27,7 +27,7 @@ body:not(.project-open) .projectbar,body:not(.project-open) .hero,body:not(.proj
 .hero{text-align:center;margin-bottom:28px}
 .hero h1{font-size:clamp(34px,7vw,56px);line-height:1.08;margin:0 0 14px;letter-spacing:-1.8px}
 .hero p{color:var(--muted);font-size:15px;line-height:1.7;margin:0}
-.modepicker{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 16px}
+.modepicker{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0 0 16px}
 .modecard{display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);background:#0a1913;color:var(--text);border-radius:18px;padding:15px;cursor:pointer;transition:.2s}
 .modecard:hover{border-color:#3c7559;transform:translateY(-1px)}
 .modecard.active{border-color:var(--green);background:linear-gradient(135deg,#10291e,#0b1d16);box-shadow:0 0 0 1px #35d07f33}
@@ -129,12 +129,13 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <button id="projectBackBtn" class="smallbtn">← 项目中心</button>
     <div class="projectinfo"><b id="currentProjectName">当前项目</b><small id="currentProjectMeta">业务资料已锁定</small></div>
     <span class="projectlock">✓ 素材与历史隔离</span>
+    <button id="learningBtn" class="smallbtn">项目记忆</button>
     <button id="editProjectBtn" class="smallbtn">项目资料</button>
   </div>
 
   <section class="hero">
     <h1>先选制作方式，<br>再把素材交给 AI。</h1>
-    <p>已有素材就做营销混剪；需要 AI 人物和场景，就进入独立的 AI 创意成片。<br>两个模块分开，不会误用客户素材或改变业务主题。</p>
+    <p>视频混剪、AI 创意成片、广告图片/海报各自独立。<br>员工每次修改与最终确认都会沉淀到当前项目，不会混用其他客户资料。</p>
   </section>
 
   <section class="modepicker" aria-label="选择视频制作方式">
@@ -145,6 +146,11 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <button class="modecard" data-mode="ai_hybrid" type="button">
       <span class="modeicon">✦</span>
       <span><b>AI 创意成片</b><small>AI 生成开头和结尾，中间穿插客户真实案例与证据素材。</small></span>
+      <span class="newtag">NEW</span>
+    </button>
+    <button class="modecard" data-mode="image_poster" type="button">
+      <span class="modeicon">▧</span>
+      <span><b>广告图片 / 海报</b><small>生产、仿制或检验优化广告图片，沿用当前项目资料与修改记忆。</small></span>
       <span class="newtag">NEW</span>
     </button>
   </section>
@@ -186,6 +192,10 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
         <div class="field">
           <label>项目名称</label>
           <input id="projectName" class="text" placeholder="不填也可以，系统自动命名">
+        </div>
+        <div class="field">
+          <label>语言</label>
+          <select id="remixLanguage"><option>跟随项目默认语言</option><option>普通话</option><option>马来西亚华语</option><option>香港粤语</option><option>繁体中文</option><option>English</option></select>
         </div>
       </div>
     </details>
@@ -247,6 +257,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
           <option value="马来西亚华语，真人自然节奏，语速偏快但清晰">马来西亚华语 · 自然真人感</option>
           <option value="普通话，真人自然节奏，语速偏快但清晰">普通话 · 自然真人感</option>
           <option value="香港粤语，本地真人自然节奏">香港粤语 · 本地真人感</option>
+          <option value="English, natural human pace, energetic commercial delivery">English · Natural commercial voice</option>
         </select>
       </div>
       <div class="fieldbox">
@@ -277,6 +288,28 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <div id="aiNotice" class="notice"><div class="line"><b id="aiNoticeText">准备中…</b><span id="aiNoticePct" class="muted">0%</span></div><div class="progress"><div id="aiBar" class="bar"></div></div></div>
   </main>
 
+  <main id="posterPanel" class="composer modepanel">
+    <div class="panelhead">
+      <div><h2>广告图片 / 海报</h2><p>可新做、参考重制或检验优化。价格、币种、业务和 CTA 只读取当前项目。</p></div>
+      <span class="modepill">独立图片工作流</span>
+    </div>
+    <div class="formgrid">
+      <div class="fieldbox"><label for="posterPurpose">制作方式</label><select id="posterPurpose"><option>新做一张营销海报</option><option>参考上传海报重制</option><option>检验并优化现有海报</option></select></div>
+      <div class="fieldbox"><label for="posterSize">图片尺寸</label><select id="posterSize"><option value="1080x1350">1080×1350 · 社媒竖版</option><option value="1080x1080">1080×1080 · 方图</option><option value="1080x1920">1080×1920 · Story</option></select></div>
+      <div class="fieldbox wide"><label for="posterTitle">主标题 / Hook *</label><input id="posterTitle" placeholder="例如：别只听别人讲 AI，亲手做一次才是真的会"></div>
+      <div class="fieldbox wide"><label for="posterFacts">核心卖点、准确价格与事实 *</label><textarea id="posterFacts" placeholder="例如：马币49｜线下实战｜现场操作｜小班教学。只填已经确认的资料。"></textarea></div>
+      <div class="fieldbox"><label for="posterCta">行动引导 *</label><input id="posterCta" placeholder="例如：立即 WhatsApp 报名"></div>
+      <div class="fieldbox"><label for="posterLanguage">语言</label><select id="posterLanguage"><option>跟随项目默认语言</option><option>简体中文</option><option>繁体中文</option><option>English</option></select></div>
+    </div>
+    <div class="uploadgrid">
+      <label class="uploadbox"><b>主视觉图片 *</b><small>产品、人物、门店或服务画面；系统会自动裁切并保护主体。</small><input id="posterMainFiles" type="file" accept="image/*,video/*"></label>
+      <label class="uploadbox"><b>参考海报 / Logo（可选）</b><small>参考只学习排版与风格；Logo 和品牌素材会独立上传。</small><input id="posterRefFiles" type="file" accept="image/*" multiple></label>
+    </div>
+    <div class="guardrail"><span>✓</span><div><b>项目隔离与检验规则自动生效</b><small>不会把美睫、按摩、美白、培训等不同项目的文案、价格或图片混在一起；后续修改会写入当前项目记忆。</small></div></div>
+    <div class="actions"><button id="posterSubmitBtn" class="primary">开始做海报</button></div>
+    <div id="posterNotice" class="notice"><div class="line"><b id="posterNoticeText">准备中…</b><span id="posterNoticePct" class="muted">0%</span></div><div class="progress"><div id="posterBar" class="bar"></div></div></div>
+  </main>
+
   <details class="history">
     <summary>历史任务</summary>
     <div id="jobs" class="jobs"><div class="empty">登录后显示最近任务。</div></div>
@@ -291,7 +324,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
       <div><label>项目名称 *</label><input id="vpName" placeholder="例如：XX门店 · 美睫"></div>
       <div><label>业务类型 *</label><input id="vpType" placeholder="例如：美睫 / 头疗 / 线下AI培训"></div>
       <div><label>客户或品牌</label><input id="vpClient" placeholder="例如：XX Beauty"></div>
-      <div><label>默认语言</label><select id="vpLanguage"><option>普通话</option><option>马来西亚华语</option><option>香港粤语</option><option>繁体中文</option></select></div>
+      <div><label>默认语言</label><select id="vpLanguage"><option>普通话</option><option>马来西亚华语</option><option>香港粤语</option><option>繁体中文</option><option>English</option></select></div>
       <div class="wide"><label>业务说明</label><textarea id="vpSummary" placeholder="主要服务、特色和真实优势"></textarea></div>
       <div class="wide"><label>目标客户</label><textarea id="vpAudience" placeholder="希望吸引哪些人、位于哪里、主要需求是什么"></textarea></div>
       <div class="wide"><label>准确价格 / 优惠 / 事实</label><textarea id="vpFacts" placeholder="只能写确认过的价格、币种、地址、活动和报名信息"></textarea></div>
@@ -301,6 +334,18 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     </div>
     <button id="projectSaveBtn">保存项目</button>
     <button id="projectCancelBtn" class="secondary">取消</button>
+  </div>
+</div>
+
+<div id="learningModal" class="modal">
+  <div class="box projectbox">
+    <h2>项目记忆与员工反馈</h2>
+    <p>系统会记录任务、修改、查看和最终确认。只有“修改意见、最终确认、长期规则”会进入下一次生产提示。</p>
+    <div class="fieldbox"><label>当前已学习偏好</label><div id="learnedPreferences" class="meta" style="white-space:pre-wrap;max-height:180px;overflow:auto">暂无</div></div>
+    <textarea id="projectNote" placeholder="补充一条长期规则，例如：这个客户永远使用 English；海报必须保留品牌红色；视频字幕不要超过两行。"></textarea>
+    <button id="saveProjectNote">保存为长期规则</button>
+    <div id="feedbackList" class="jobs" style="max-height:260px;overflow:auto;margin-top:12px"><div class="empty">读取中…</div></div>
+    <button id="closeLearning" class="secondary">关闭</button>
   </div>
 </div>
 
@@ -348,16 +393,19 @@ let revisionParent=null;
 let projects=[];
 let currentProject=null;
 let editingProjectId=null;
+const ACTOR_ID=localStorage.getItem('lulianVideoActor')||crypto.randomUUID();
+localStorage.setItem('lulianVideoActor',ACTOR_ID);
 const saved=sessionStorage.getItem('lulianVideoAccess')||'';
 $('access').value=saved;
 
 function setMode(mode){
-  const safe=mode==='ai_hybrid'?'ai_hybrid':'remix';
+  const safe=['remix','ai_hybrid','image_poster'].includes(mode)?mode:'remix';
   document.querySelectorAll('.modecard').forEach(b=>b.classList.toggle('active',b.dataset.mode===safe));
   $('remixPanel').classList.toggle('active',safe==='remix');
   $('aiHybridPanel').classList.toggle('active',safe==='ai_hybrid');
+  $('posterPanel').classList.toggle('active',safe==='image_poster');
   sessionStorage.setItem('lulianVideoMode',safe);
-  document.title=safe==='ai_hybrid'?'AI 创意成片｜鹿联视频员工':'真实素材混剪｜鹿联视频员工';
+  document.title=({ai_hybrid:'AI 创意成片',image_poster:'广告图片 / 海报',remix:'真实素材混剪'})[safe]+'｜鹿联营销素材员工';
 }
 document.querySelectorAll('.modecard').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 setMode(sessionStorage.getItem('lulianVideoMode')||'remix');
@@ -388,6 +436,11 @@ async function api(action,body={}){
   const data=await r.json();
   if(!r.ok||data.error)throw new Error(data.error||'请求失败');
   return data;
+}
+
+function recordEvent(event_type,content='',metadata={},job_id=null){
+  if(!currentProject)return Promise.resolve();
+  return api('record_feedback',{video_project_id:currentProject.id,job_id,actor_id:ACTOR_ID,event_type,content,metadata}).catch(()=>{});
 }
 
 function projectPayload(){
@@ -430,10 +483,11 @@ function showProjectHome(){
 function clearPendingProjectDraft(){
   selected=[];
   renderFiles();
-  ['fileInput','aiMainFiles','aiReferenceFiles','aiCharacterFiles','aiAssetFiles'].forEach(id=>{$(id).value=''});
-  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName'].forEach(id=>{$(id).value=''});
+  ['fileInput','aiMainFiles','aiReferenceFiles','aiCharacterFiles','aiAssetFiles','posterMainFiles','posterRefFiles'].forEach(id=>{$(id).value=''});
+  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName','posterTitle','posterFacts','posterCta'].forEach(id=>{$(id).value=''});
   $('notice').classList.remove('show');
   $('aiNotice').classList.remove('show');
+  $('posterNotice').classList.remove('show');
 }
 async function selectProject(project){
   if(!currentProject||currentProject.id!==project.id)clearPendingProjectDraft();
@@ -449,7 +503,11 @@ async function selectProject(project){
   $('aiAction').value=project.cta||'';
   const voice=[...$('aiVoice').options].find(o=>o.value.startsWith(project.default_language||''));
   if(voice)$('aiVoice').value=voice.value;
+  $('remixLanguage').value='跟随项目默认语言';
+  $('posterLanguage').value='跟随项目默认语言';
+  $('posterCta').value=project.cta||'';
   document.title=project.project_name+'｜鹿联视频员工';
+  recordEvent('project_open','',{business_type:project.business_type});
   await loadJobs();
 }
 function renderProjects(){
@@ -474,6 +532,25 @@ async function loadProjects(){
 }
 $('newProjectBtn').onclick=()=>openProjectModal();
 $('editProjectBtn').onclick=()=>currentProject&&openProjectModal(currentProject);
+$('learningBtn').onclick=async()=>{
+  if(!currentProject)return;
+  $('learningModal').classList.add('show');
+  $('learnedPreferences').textContent=currentProject.learned_preferences||'暂无；从本项目下一次修改或确认开始学习。';
+  $('feedbackList').innerHTML='<div class="empty">读取中…</div>';
+  try{
+    const data=await api('list_feedback',{video_project_id:currentProject.id,limit:40});
+    const names={revision:'修改',accept:'确认',project_note:'长期规则',submit:'提交',view_result:'查看结果',download:'打开结果',project_open:'进入项目'};
+    $('feedbackList').innerHTML=data.feedback?.length?data.feedback.map(x=>`<div class="job"><div class="jobhead"><b>${escapeHtml(names[x.event_type]||x.event_type)}</b><span class="pill">${new Date(x.created_at).toLocaleString()}</span></div>${x.content?`<div class="meta">${escapeHtml(x.content)}</div>`:''}</div>`).join(''):'<div class="empty">尚无操作记录。</div>';
+  }catch(e){$('feedbackList').innerHTML='<div class="empty">读取失败：'+escapeHtml(e.message)+'</div>'}
+};
+$('closeLearning').onclick=()=>$('learningModal').classList.remove('show');
+$('saveProjectNote').onclick=async()=>{
+  const content=$('projectNote').value.trim();
+  if(!content)return alert('请先填写长期规则');
+  const btn=$('saveProjectNote');btn.disabled=true;
+  try{await api('record_feedback',{video_project_id:currentProject.id,actor_id:ACTOR_ID,event_type:'project_note',content,metadata:{source:'manual'}});$('projectNote').value='';await loadProjects();$('learningModal').classList.remove('show');alert('已保存。后续这个项目的生产会自动带上这条规则。')}
+  catch(e){alert('保存失败：'+e.message)}finally{btn.disabled=false}
+};
 $('projectCancelBtn').onclick=()=>{$('projectModal').classList.remove('show');editingProjectId=null};
 $('projectBackBtn').onclick=showProjectHome;
 $('backProjects').onclick=showProjectHome;
@@ -519,7 +596,7 @@ async function uploadOne(jobId,file,index,total,role='auto',channel='remix'){
   const {error}=await sb.storage.from(sign.bucket).upload(sign.path,file,{contentType:file.type||undefined,upsert:false});
   if(error)throw error;
   const pct=Math.round(((index+1)/Math.max(total,1))*85);
-  if(channel==='ai')setAiStatus('正在上传 '+file.name,pct);else setStatus('正在上传 '+file.name,pct);
+  if(channel==='ai')setAiStatus('正在上传 '+file.name,pct);else if(channel==='poster')setPosterStatus('正在上传 '+file.name,pct);else setStatus('正在上传 '+file.name,pct);
   return {role,name:file.name,path:sign.path,size:file.size,type:file.type};
 }
 function setStatus(text,pct){
@@ -527,6 +604,9 @@ function setStatus(text,pct){
 }
 function setAiStatus(text,pct){
   $('aiNotice').classList.add('show');$('aiNoticeText').textContent=text;$('aiNoticePct').textContent=pct+'%';$('aiBar').style.width=pct+'%';
+}
+function setPosterStatus(text,pct){
+  $('posterNotice').classList.add('show');$('posterNoticeText').textContent=text;$('posterNoticePct').textContent=pct+'%';$('posterBar').style.width=pct+'%';
 }
 
 $('submitBtn').onclick=async()=>{
@@ -537,11 +617,13 @@ $('submitBtn').onclick=async()=>{
     if(!brief)throw new Error('先告诉我你想做什么');
     const autoName='视频任务 '+new Date().toLocaleDateString()+' '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     setStatus('正在创建任务…',2);
-    const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'remix',project_name:$('projectName').value.trim()||autoName,brief,output_count:Number($('outputCount').value)});
+    const language=$('remixLanguage').value==='跟随项目默认语言'?currentProject.default_language:$('remixLanguage').value;
+    const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'remix',project_name:$('projectName').value.trim()||autoName,brief:`语言：${language}\n${brief}`,output_count:Number($('outputCount').value)});
     const meta=[];
     for(let i=0;i<selected.length;i++)meta.push(await uploadOne(init.job.id,selected[i],i,selected.length));
     setStatus('素材已上传，交给视频工厂…',93);
     await api('submit_job',{job_id:init.job.id,input_files:meta});
+    recordEvent('submit','',{workflow_mode:'remix',language},init.job.id);
     setStatus('任务已提交',100);
     $('brief').value='';selected=[];renderFiles();
     await loadJobs();
@@ -600,10 +682,33 @@ $('aiSubmitBtn').onclick=async()=>{
     for(let i=0;i<files.length;i++)meta.push(await uploadOne(init.job.id,files[i].file,i,files.length,files[i].role,'ai'));
     setAiStatus('素材已分类，正在提交 AI 生成与真实证据编排…',93);
     await api('submit_job',{job_id:init.job.id,input_files:meta});
+    recordEvent('submit','',{workflow_mode:'ai_hybrid',language:$('aiVoice').value},init.job.id);
     setAiStatus('任务已提交，可在下方历史任务查看进度',100);
     await loadJobs();
     $('jobs').closest('details').open=true;
   }catch(e){setAiStatus('提交失败：'+e.message,0)}finally{btn.disabled=false}
+};
+
+$('posterSubmitBtn').onclick=async()=>{
+  const btn=$('posterSubmitBtn');btn.disabled=true;
+  try{
+    if(!currentProject)throw new Error('请先选择一个业务项目');
+    const main=[...$('posterMainFiles').files];
+    if(!main.length)throw new Error('请上传一张主视觉图片或一段可取画面的短视频');
+    const title=$('posterTitle').value.trim(),facts=$('posterFacts').value.trim(),cta=$('posterCta').value.trim();
+    if(!title||!facts||!cta)throw new Error('请填写主标题、准确事实和行动引导');
+    const language=$('posterLanguage').value==='跟随项目默认语言'?currentProject.default_language:$('posterLanguage').value;
+    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${currentProject.client_name||currentProject.project_name}\n要求：高端商业广告质感，信息层级清楚，标题醒目，CTA明确，文字不压住人物脸部；只能使用当前项目的准确事实。`;
+    setPosterStatus('正在创建海报任务…',2);
+    const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'image_poster',project_name:'广告海报 · '+title.slice(0,18),brief,output_count:1});
+    const files=[...main.map(file=>({role:'main',file})),...[...$('posterRefFiles').files].map(file=>({role:'reference',file}))],meta=[];
+    for(let i=0;i<files.length;i++)meta.push(await uploadOne(init.job.id,files[i].file,i,files.length,files[i].role,'poster'));
+    setPosterStatus('图片已上传，正在排版与检验…',93);
+    await api('submit_job',{job_id:init.job.id,input_files:meta});
+    recordEvent('submit','',{workflow_mode:'image_poster',language,size:$('posterSize').value},init.job.id);
+    setPosterStatus('海报任务已提交，可在历史任务查看进度',100);
+    await loadJobs();$('jobs').closest('details').open=true;
+  }catch(e){setPosterStatus('提交失败：'+e.message,0)}finally{btn.disabled=false}
 };
 
 const label=s=>({draft:'草稿',uploading:'上传中',queued:'排队中',processing:'制作中',review:'质检中',completed:'已完成',failed:'失败'})[s]||s;
@@ -652,7 +757,7 @@ async function loadJobs(){
   const data=await api('list_jobs',{video_project_id:currentProject.id});
   $('jobs').innerHTML=data.jobs?.length?data.jobs.map(j=>`
     <div class="job">
-      <div class="jobhead"><b>${escapeHtml(j.project_name)} ${String(j.project_name||'').startsWith('AI创意成片 · ')?'<span class="jobtype">AI创意成片</span>':''}<span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
+      <div class="jobhead"><b>${escapeHtml(j.project_name)} ${j.workflow_mode==='ai_hybrid'?'<span class="jobtype">AI创意成片</span>':j.workflow_mode==='image_poster'?'<span class="jobtype">图片海报</span>':''}<span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
       <div class="meta">${escapeHtml(j.stage||'')} · ${j.progress||0}% · ${new Date(j.created_at).toLocaleString()}</div>
       <div id="job-${j.id}"><button class="smallbtn detail" data-id="${j.id}" style="margin-top:8px">查看</button></div>
     </div>`).join(''):'<div class="empty">还没有任务。</div>';
@@ -661,10 +766,11 @@ async function loadJobs(){
 async function showJob(id){
   const root=$('job-'+id);root.innerHTML='<div class="meta">读取中…</div>';
   const {job}=await api('status',{job_id:id});
+  recordEvent('view_result','',{status:job.status,workflow_mode:job.workflow_mode},job.id);
   let h='<div class="meta">V'+(job.version_number||1)+' · '+escapeHtml(job.stage||'')+' · '+(job.progress||0)+'%</div>';
   if(job.revision_prompt)h+='<div class="meta" style="margin-top:6px">本版修改：'+escapeHtml(job.revision_prompt)+'</div>';
   if(job.output_files?.length){
-    h+=job.output_files.map((o,i)=>o.path?'<button class="result result-download" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">查看成片 '+(i+1)+'</button>':'').join(' ');
+    h+=job.output_files.map((o,i)=>o.path?'<button class="result result-download" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">'+(job.workflow_mode==='image_poster'?'查看海报 ':'查看成片 ')+(i+1)+'</button>':'').join(' ');
     h+='<div class="revactions">'+
       (job.accepted_at?'<span class="accepted">✓ 这一版已确认</span>':'<button class="revbtn primarymini accept-job">👍 满意，完成</button>')+
       '<button class="revbtn revise-job">继续优化</button></div>';
@@ -678,6 +784,7 @@ async function showJob(id){
     if(error){alert('成片读取失败：'+error.message);return}
     const u=URL.createObjectURL(data);
     window.open(u,'_blank');
+    recordEvent('download','',{path:btn.dataset.path,workflow_mode:job.workflow_mode},job.id);
     setTimeout(()=>URL.revokeObjectURL(u),60000);
   });
   root.querySelector('.revise-job')?.addEventListener('click',()=>openRevision(job));
