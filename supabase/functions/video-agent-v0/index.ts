@@ -4,7 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const PUBLIC_KEY = "sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ";
 const INPUT_BUCKET = "video-agent-inputs";
 const RESULT_BUCKET = "video-agent-results";
-const ACCESS_HASH = "4ad67f2712b4dcb0f6b0061975b5c815927eb75a9c5bc1e7df6f864e1ed17615";
+const ACCESS_HASH = "f8be225d581edd163be04866ccf14d262f24d519fd6b3f33aa6c885c276c0dd6";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
