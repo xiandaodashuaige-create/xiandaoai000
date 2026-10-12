@@ -222,10 +222,29 @@ function operationKey(operation, key) {
 }
 
 function jobScope(scope, mapping) {
-  if (!mapping || typeof mapping.mediaJobId !== 'string' || mapping.videoProjectId !== scope.videoProjectId) {
+  if (!mapping || typeof mapping.mediaJobId !== 'string' || !mapping.mediaJobId.trim()
+    || mapping.videoProjectId !== scope.videoProjectId) {
     fail(404, 'job_not_found');
   }
   return mapping;
+}
+
+function persistenceScope(scope) {
+  return {
+    tenantId: scope.tenantId,
+    projectRef: scope.projectRef,
+    videoProjectId: scope.videoProjectId,
+  };
+}
+
+function verifiedMediaJob(job, { videoProjectId, mediaJobId } = {}) {
+  if (!job || typeof job !== 'object' || typeof job.id !== 'string' || !job.id.trim()
+    || typeof job.video_project_id !== 'string' || !job.video_project_id.trim()
+    || job.video_project_id !== videoProjectId
+    || (mediaJobId && job.id !== mediaJobId)) {
+    fail(502, 'invalid_media_job_identity');
+  }
+  return job;
 }
 
 export function createAdsEmployeeVideoAdapter({
@@ -316,7 +335,7 @@ export function createAdsEmployeeVideoAdapter({
       fail(404, 'project_not_found');
     }
     if (!binding || binding.tenantId !== context.tenantId
-      || typeof binding.videoProjectId !== 'string' || !binding.videoProjectId) {
+      || typeof binding.videoProjectId !== 'string' || !binding.videoProjectId.trim()) {
       fail(404, 'project_not_found');
     }
     return {
@@ -331,12 +350,14 @@ export function createAdsEmployeeVideoAdapter({
     const key = text(idempotencyKey, 'idempotency_key', 200);
     const scopedKey = operationKey(operation, key);
     const bodyFingerprint = fingerprint(payload);
+    const durableScope = persistenceScope(scope);
+    const operationDetails = { ...details, initiatedByActorId: details.initiatedByActorId || scope.actorId };
     const reservation = await persistence.reserveOperation({
-      scope,
+      scope: durableScope,
       key: scopedKey,
       fingerprint: bodyFingerprint,
-      details,
-      logicalKey: details.logicalKey || null,
+      details: operationDetails,
+      logicalKey: operationDetails.logicalKey || null,
     });
     if (!reservation || !reservation.record) fail(503, 'idempotency_store_unavailable');
     if (reservation.record.fingerprint !== bodyFingerprint) fail(409, 'idempotency_conflict');
@@ -344,10 +365,10 @@ export function createAdsEmployeeVideoAdapter({
     const storedKey = reservation.record.key || scopedKey;
     if (!reservation.created) {
       const reconciled = await persistence.reconcileOperation({
-        scope,
+        scope: durableScope,
         key: storedKey,
         record: reservation.record,
-        details,
+        details: operationDetails,
       });
       if (reconciled?.state === 'completed' && reconciled.result) return reconciled.result;
       fail(409, 'reconciliation_required');
@@ -358,7 +379,7 @@ export function createAdsEmployeeVideoAdapter({
     } catch (error) {
       if (error instanceof AdapterError && error.definitive) {
         await persistence.releaseOperation({
-          scope,
+          scope: durableScope,
           key: storedKey,
           fingerprint: bodyFingerprint,
         });
@@ -367,18 +388,18 @@ export function createAdsEmployeeVideoAdapter({
     }
     const additionalDetails = await completionDetails(result, reservation.record);
     await persistence.completeOperation({
-      scope,
+      scope: durableScope,
       key: storedKey,
       fingerprint: bodyFingerprint,
       result,
-      details: { ...reservation.record.details, ...details, ...additionalDetails },
+      details: { ...reservation.record.details, ...operationDetails, ...additionalDetails },
     });
     return result;
   }
 
   async function mappedJob(scope, jobRef, taskId) {
     const mapping = jobScope(scope, await persistence.getJobMapping({
-      scope,
+      scope: persistenceScope(scope),
       jobRef: text(jobRef, 'job_ref', 200),
     }));
     if (taskId && mapping.taskId && taskId !== mapping.taskId) fail(404, 'job_not_found');
@@ -389,10 +410,14 @@ export function createAdsEmployeeVideoAdapter({
     const mapping = await mappedJob(scope, jobRef, taskId);
     const response = await call('status', { job_id: mapping.mediaJobId }, { read: true });
     if (!response.job) fail(502, 'missing_media_job');
+    const job = verifiedMediaJob(response.job, {
+      videoProjectId: scope.videoProjectId,
+      mediaJobId: mapping.mediaJobId,
+    });
     return {
       mapping,
-      job: response.job,
-      result: mediaResult(response.job, mapping.taskId, jobRef, mapping.parentJobRef || null),
+      job,
+      result: mediaResult(job, mapping.taskId, jobRef, mapping.parentJobRef || null),
     };
   }
 
@@ -436,7 +461,8 @@ export function createAdsEmployeeVideoAdapter({
       }, async (record) => {
         try {
           await persistence.saveSnapshot({
-            scope,
+            scope: persistenceScope(scope),
+            initiatedByActorId: scope.actorId,
             taskId: canonicalTaskId,
             version: snapshot.version,
             snapshot,
@@ -452,7 +478,8 @@ export function createAdsEmployeeVideoAdapter({
           workflow_mode: selectedMode,
         });
         if (!response.job || typeof response.job.id !== 'string') fail(502, 'missing_created_job');
-        return mediaResult(response.job, canonicalTaskId, record.details.jobRef);
+        const job = verifiedMediaJob(response.job, { videoProjectId: scope.videoProjectId });
+        return mediaResult(job, canonicalTaskId, record.details.jobRef);
       }, (result, record) => ({
         jobMapping: {
           jobRef: record.details.jobRef,
@@ -484,7 +511,7 @@ export function createAdsEmployeeVideoAdapter({
           file_name: fileName,
           content_type: contentType,
         });
-        if (response.bucket !== INPUT_BUCKET || typeof response.path !== 'string' || !response.path) {
+        if (response.bucket !== INPUT_BUCKET || typeof response.path !== 'string' || !response.path.trim()) {
           fail(502, 'invalid_upload_path');
         }
         return {
@@ -517,9 +544,9 @@ export function createAdsEmployeeVideoAdapter({
       const uploads = boundedList(input.uploadRefs, 'upload_ref', 20, 200);
       const inputFiles = [];
       for (const uploadRef of uploads) {
-        const upload = await persistence.getUploadMapping?.({ scope, jobRef, uploadRef });
+        const upload = await persistence.getUploadMapping?.({ scope: persistenceScope(scope), jobRef, uploadRef });
         if (!upload || upload.videoProjectId !== scope.videoProjectId || upload.mediaJobId !== mapping.mediaJobId
-          || upload.bucket !== INPUT_BUCKET || typeof upload.path !== 'string') fail(404, 'upload_not_found');
+          || upload.bucket !== INPUT_BUCKET || typeof upload.path !== 'string' || !upload.path.trim()) fail(404, 'upload_not_found');
         inputFiles.push({
           name: upload.fileName,
           path: upload.path,
@@ -535,8 +562,11 @@ export function createAdsEmployeeVideoAdapter({
       }, async (record) => {
         const response = await call('submit_job', { job_id: mapping.mediaJobId, input_files: inputFiles });
         if (!response.job) fail(502, 'missing_submitted_job');
-        const result = mediaResult(response.job, mapping.taskId, jobRef, mapping.parentJobRef || null);
-        return result;
+        const job = verifiedMediaJob(response.job, {
+          videoProjectId: scope.videoProjectId,
+          mediaJobId: mapping.mediaJobId,
+        });
+        return mediaResult(job, mapping.taskId, jobRef, mapping.parentJobRef || null);
       });
     }
 
@@ -587,12 +617,14 @@ export function createAdsEmployeeVideoAdapter({
           revision_scope: revisionScope,
         });
         if (!response.job || typeof response.job.id !== 'string') fail(502, 'missing_revision_job');
-        if (response.job.parent_job_id !== parent.mediaJobId
-          || response.job.revision_prompt !== revisionPrompt
-          || response.job.revision_scope !== revisionScope) {
+        const job = verifiedMediaJob(response.job, { videoProjectId: scope.videoProjectId });
+        if (job.id === parent.mediaJobId || job.parent_job_id !== parent.mediaJobId) {
+          fail(502, 'invalid_media_job_identity');
+        }
+        if (job.revision_prompt !== revisionPrompt || job.revision_scope !== revisionScope) {
           throw new AdapterError(409, 'revision_already_exists', true);
         }
-        return mediaResult(response.job, parent.taskId, record.details.jobRef, jobRef);
+        return mediaResult(job, parent.taskId, record.details.jobRef, jobRef);
       }, (result, record) => ({
         jobMapping: {
           jobRef: record.details.jobRef,

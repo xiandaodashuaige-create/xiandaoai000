@@ -268,6 +268,80 @@ test('creates a versioned brief snapshot and keeps scope for status, refresh, re
   assert.equal(h.calls.some((call) => call.action === 'accept_job'), false);
 });
 
+test('same tenant/project task reuses its job across authorised actors and records the initiating actor', async () => {
+  const h = harness({ createId: (() => {
+    let n = 0;
+    return () => `integration-job-${++n}`;
+  })() });
+  const created = await createJob(h);
+  const staff = harness({
+    context: { actorId: 'staff-A', tenantId: 'tenant-A', role: 'staff' },
+    persistence: h.persistence,
+    createId: () => 'unused-new-job-ref',
+  });
+  const sameBrief = await staff.handler(createRequest({
+    idempotencyKey: 'create-key-staff',
+  }));
+  assert.deepEqual(sameBrief, created);
+  assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+  const createOperation = [...h.persistence.operations.values()].find((operation) => operation.logicalKey === 'task:task-synthetic-1');
+  assert.equal(createOperation.details.initiatedByActorId, 'actor-A');
+});
+
+test('concurrent same-task creates across authorised roles reserve one original job lineage', async () => {
+  const h = harness();
+  const staff = harness({
+    context: { actorId: 'staff-A', tenantId: 'tenant-A', role: 'staff' },
+    persistence: h.persistence,
+  });
+  const [customerResponse, staffResponse] = await Promise.all([
+    h.handler(createRequest({ idempotencyKey: 'parallel-customer' })),
+    staff.handler(createRequest({ idempotencyKey: 'parallel-staff' })),
+  ]);
+  assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+  const successful = [customerResponse, staffResponse].find((response) => response.body.ok);
+  const unresolved = [customerResponse, staffResponse].find((response) => response.status === 409);
+  assert.ok(successful);
+  assert.equal(unresolved.body.error, 'reconciliation_required');
+  assert.equal(h.persistence.jobs.size, 1);
+  const [mapping] = h.persistence.jobs.values();
+  assert.equal(mapping.mediaJobId, successful.body.result.jobId);
+  assert.equal(mapping.videoProjectId, 'media-project-A');
+  const retriedByStaff = await staff.handler(createRequest({ idempotencyKey: 'parallel-staff-retry' }));
+  assert.deepEqual(retriedByStaff, successful);
+  assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+});
+
+test('same task and brief in another tenant never returns the first tenant job', async () => {
+  const h = harness();
+  const tenantA = await createJob(h);
+  const tenantB = harness({
+    context: { actorId: 'actor-B', tenantId: 'tenant-B', role: 'customer' },
+    persistence: h.persistence,
+    createId: () => 'tenant-B-job-ref',
+    transport: async (action, body) => {
+      if (action === 'init_job') {
+        return {
+          status: 200,
+          body: syntheticJobEnvelope({
+            ...syntheticUploadingJob,
+            id: 'media-job-synthetic-B',
+            video_project_id: 'media-project-B',
+          }),
+        };
+      }
+      return defaultTransport(action, body);
+    },
+  });
+  const tenantBResponse = await tenantB.handler(createRequest({ projectRef: 'project-B' }));
+  assert.equal(tenantBResponse.status, 200);
+  assert.equal(tenantBResponse.body.result.jobId, 'media-job-synthetic-B');
+  assert.notEqual(tenantBResponse.body.result.jobId, tenantA.body.result.jobId);
+  assert.notEqual(tenantBResponse.body.result.jobRef, tenantA.body.result.jobRef);
+  assert.equal(tenantB.calls.filter((call) => call.action === 'init_job').length, 1);
+  assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+});
+
 test('uploads use service-issued project/job paths and submit uses only persisted upload references', async () => {
   const h = harness();
   const created = await createJob(h);
@@ -409,6 +483,168 @@ test('a pre-existing mismatched revision from the media service is rejected, not
   assert.equal(response.body.error, 'revision_already_exists');
   assert.equal(h.persistence.jobs.size, 1);
   assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
+});
+
+test('create refuses mismatched project/job identities and preserves pending reservations', async (t) => {
+    for (const [label, identity] of [
+      ['foreign project', { id: 'foreign-job-B', video_project_id: 'media-project-B' }],
+      ['missing project', { video_project_id: undefined }],
+      ['missing job ID', { id: '' }],
+    ]) {
+      await t.test(`create rejects ${label}`, async () => {
+        const h = harness({
+          transport: async (action, body) => {
+            if (action === 'init_job') {
+              return {
+                status: 200,
+                body: syntheticJobEnvelope({ ...syntheticUploadingJob, ...identity }),
+              };
+            }
+            return defaultTransport(action, body);
+          },
+        });
+        const response = await createJob(h);
+        assert.equal(response.body.ok, false);
+        assert.equal(response.body.error, 'invalid_media_job_identity');
+        assert.equal(h.persistence.jobs.size, 0);
+        assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+        const retry = await h.handler(createRequest({ idempotencyKey: 'create-after-ambiguous-identity' }));
+        assert.equal(retry.body.error, 'reconciliation_required');
+        assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+      });
+    }
+  });
+
+test('status and download refuse a foreign job/project before exposing metadata or signing a path', async (t) => {
+    for (const operation of ['status', 'download_url']) {
+      await t.test(operation, async () => {
+        const h = harness({
+          transport: async (action, body) => {
+            if (action === 'status') {
+              return {
+                status: 200,
+                body: syntheticJobEnvelope({
+                  ...syntheticCompletedJob,
+                  id: 'foreign-job-B',
+                  video_project_id: 'media-project-B',
+                  output_files: [{ name: 'CLIENT-B-PRIVATE.mp4', path: 'foreign-job-B/private.mp4', type: 'video/mp4' }],
+                }),
+              };
+            }
+            return defaultTransport(action, body);
+          },
+        });
+        const created = await createJob(h);
+        const response = await h.handler(request(operation, {
+          jobRef: created.body.result.jobRef,
+          input: { assetRef: 'asset-0' },
+        }));
+        assert.equal(response.body.ok, false);
+        assert.equal(response.body.error, 'invalid_media_job_identity');
+        assert.doesNotMatch(JSON.stringify(response), /CLIENT-B-PRIVATE|foreign-job-B|private\.mp4/);
+        assert.equal(h.calls.some((call) => call.action === 'download_url'), false);
+      });
+    }
+    for (const [label, job] of [
+      ['missing project ID', { ...syntheticCompletedJob, video_project_id: undefined }],
+      ['missing job ID', { ...syntheticCompletedJob, id: '' }],
+      ['wrong mapped job ID', { ...syntheticCompletedJob, id: 'different-job-A' }],
+    ]) {
+      await t.test(`status rejects ${label}`, async () => {
+        const h = harness({
+          transport: async (action, body) => action === 'status'
+            ? { status: 200, body: syntheticJobEnvelope(job) }
+            : defaultTransport(action, body),
+        });
+        const created = await createJob(h);
+        const response = await h.handler(request('status', { jobRef: created.body.result.jobRef }));
+        assert.equal(response.body.error, 'invalid_media_job_identity');
+      });
+    }
+  });
+
+test('submit and revision refuse mismatched returned job lineage without persisting mappings', async (t) => {
+    for (const [label, identity] of [
+      ['job ID mismatch', { id: 'foreign-job-B' }],
+      ['project mismatch', { video_project_id: 'media-project-B' }],
+    ]) {
+      await t.test(`submit response ${label}`, async () => {
+        const h = harness({
+          transport: async (action, body) => {
+            if (action === 'submit_job') {
+              return {
+                status: 200,
+                body: syntheticJobEnvelope({ ...syntheticQueuedJob, ...identity }),
+              };
+            }
+            return defaultTransport(action, body);
+          },
+        });
+        const created = await createJob(h);
+        const upload = await h.handler(request('prepare_upload', {
+          jobRef: created.body.result.jobRef,
+          idempotencyKey: 'upload-key-1',
+          input: { fileName: 'same-name.jpg', contentType: 'image/jpeg' },
+        }));
+        const response = await h.handler(request('submit_job', {
+          jobRef: created.body.result.jobRef,
+          idempotencyKey: 'submit-key-1',
+          input: { uploadRefs: [upload.body.result.uploadRef] },
+        }));
+        assert.equal(response.body.error, 'invalid_media_job_identity');
+        assert.equal(h.persistence.jobs.size, 1);
+        assert.equal(h.calls.filter((call) => call.action === 'submit_job').length, 1);
+        const retry = await h.handler(request('submit_job', {
+          jobRef: created.body.result.jobRef,
+          idempotencyKey: 'submit-key-after-ambiguous-identity',
+          input: { uploadRefs: [upload.body.result.uploadRef] },
+        }));
+        assert.equal(retry.body.error, 'reconciliation_required');
+        assert.equal(h.calls.filter((call) => call.action === 'submit_job').length, 1);
+      });
+    }
+
+  await t.test('revision response project or parent mismatch', async (t) => {
+      for (const mismatch of [
+        { video_project_id: 'media-project-B' },
+        { parent_job_id: 'foreign-parent-B' },
+      ]) {
+        await t.test(JSON.stringify(mismatch), async () => {
+          const h = harness({
+            transport: async (action, body) => {
+              if (action === 'create_revision') {
+                return {
+                  status: 200,
+                  body: syntheticJobEnvelope({
+                    ...syntheticRevisionJob,
+                    ...mismatch,
+                    revision_prompt: body.revision_prompt,
+                    revision_scope: body.revision_scope,
+                  }),
+                };
+              }
+              return defaultTransport(action, body);
+            },
+          });
+          const created = await createJob(h);
+          const response = await h.handler(request('create_revision', {
+            jobRef: created.body.result.jobRef,
+            idempotencyKey: 'revision-key-1',
+            input: { prompt: 'Change the opening', scope: 'hook' },
+          }));
+          assert.equal(response.body.ok, false);
+          assert.equal(h.persistence.jobs.size, 1);
+          assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
+          const retry = await h.handler(request('create_revision', {
+            jobRef: created.body.result.jobRef,
+            idempotencyKey: 'revision-after-ambiguous-identity',
+            input: { prompt: 'Change the opening', scope: 'hook' },
+          }));
+          assert.equal(retry.body.error, 'reconciliation_required');
+          assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
+        });
+      }
+  });
 });
 
 test('an incomplete parent does not reserve the revision key and can be revised after completion', async () => {

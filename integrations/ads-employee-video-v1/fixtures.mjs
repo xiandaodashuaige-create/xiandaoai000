@@ -1,6 +1,6 @@
 export const syntheticUploadingJob = {
   id: 'media-job-synthetic-001',
-  video_project_id: 'media-project-synthetic-A',
+  video_project_id: 'media-project-A',
   project_name: 'Synthetic campaign',
   workflow_mode: 'remix',
   status: 'uploading',
