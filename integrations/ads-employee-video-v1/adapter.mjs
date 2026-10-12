@@ -69,7 +69,8 @@ function asNumber(value) {
 function outputManifest(job, taskId) {
   const files = Array.isArray(job.output_files) ? job.output_files : [];
   return files.flatMap((file, index) => {
-    if (!file || typeof file.path !== 'string' || !file.path || typeof file.name !== 'string') return [];
+    if (!file || typeof file.path !== 'string' || !file.path.trim()
+      || typeof file.name !== 'string' || !file.name.trim()) return [];
     return [{
       assetRef: `asset-${index}`,
       name: file.name,

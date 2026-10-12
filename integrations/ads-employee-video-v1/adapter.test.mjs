@@ -439,12 +439,13 @@ test('an incomplete parent does not reserve the revision key and can be revised 
 });
 
 test('a completed parent without a valid output manifest cannot be revised', async () => {
+  let outputFiles = [];
   const h = harness({
     transport: async (action, body) => {
       if (action === 'status') {
         return {
           status: 200,
-          body: syntheticJobEnvelope({ ...syntheticCompletedJob, output_files: [] }),
+          body: syntheticJobEnvelope({ ...syntheticCompletedJob, output_files: outputFiles }),
         };
       }
       return defaultTransport(action, body);
@@ -459,6 +460,23 @@ test('a completed parent without a valid output manifest cannot be revised', asy
   assert.equal(revision.status, 409);
   assert.equal(revision.body.error, 'parent_output_missing');
   assert.equal([...h.persistence.operations.values()].some((operation) => operation.details.logicalKey?.startsWith('revision:')), false);
+  assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 0);
+
+  for (const malformed of [
+    [{ name: '   ', path: 'synthetic/job/result.mp4', type: 'video/mp4' }],
+    [{ name: 'result.mp4', path: '   ', type: 'video/mp4' }],
+  ]) {
+    outputFiles = malformed;
+    const status = await h.handler(request('status', { jobRef: created.body.result.jobRef }));
+    assert.equal(status.body.result.completionConfirmed, false);
+    assert.deepEqual(status.body.result.assets, []);
+    const rejected = await h.handler(request('create_revision', {
+      jobRef: created.body.result.jobRef,
+      idempotencyKey: `malformed-${malformed[0].name.trim() || 'name'}`,
+      input: { prompt: 'Change the opening', scope: 'hook' },
+    }));
+    assert.equal(rejected.body.error, 'parent_output_missing');
+  }
   assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 0);
 });
 
