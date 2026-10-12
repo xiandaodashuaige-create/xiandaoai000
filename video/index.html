@@ -424,9 +424,19 @@ function showProjectHome(){
   $('backProjects').style.display='none';
   currentProject=null;
   sessionStorage.removeItem('lulianVideoProjectId');
+  document.title='视频项目中心｜鹿联视频员工';
   renderProjects();
 }
+function clearPendingProjectDraft(){
+  selected=[];
+  renderFiles();
+  ['fileInput','aiMainFiles','aiReferenceFiles','aiCharacterFiles','aiAssetFiles'].forEach(id=>{$(id).value=''});
+  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName'].forEach(id=>{$(id).value=''});
+  $('notice').classList.remove('show');
+  $('aiNotice').classList.remove('show');
+}
 async function selectProject(project){
+  if(!currentProject||currentProject.id!==project.id)clearPendingProjectDraft();
   currentProject=project;
   sessionStorage.setItem('lulianVideoProjectId',project.id);
   document.body.classList.add('project-open');
@@ -439,6 +449,7 @@ async function selectProject(project){
   $('aiAction').value=project.cta||'';
   const voice=[...$('aiVoice').options].find(o=>o.value.startsWith(project.default_language||''));
   if(voice)$('aiVoice').value=voice.value;
+  document.title=project.project_name+'｜鹿联视频员工';
   await loadJobs();
 }
 function renderProjects(){
