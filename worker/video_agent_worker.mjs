@@ -5,7 +5,10 @@ import {spawn, spawnSync} from 'node:child_process';
 
 const SB='https://ejspsxjeelhsevldmnhl.supabase.co';
 const KEY='sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ';
-const ACCESS='lulian';
+const ACCESS=process.env.VIDEO_AGENT_ACCESS;
+if (!ACCESS || ACCESS.length < 32) {
+  throw new Error('VIDEO_AGENT_ACCESS must be configured with a strong token');
+}
 const WORKER='CREAT16-VIDEO-V0';
 const ROOT=String.raw`D:\Users\SENDO\Desktop\ad-video\ad-template-video`;
 const FACTORY=String.raw`D:\LULIAN_VIDEO_FACTORY_V0`;
