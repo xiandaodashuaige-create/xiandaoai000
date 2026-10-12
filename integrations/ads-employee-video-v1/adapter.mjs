@@ -38,6 +38,57 @@ function header(request, name) {
   return key ? request.headers[key] : undefined;
 }
 
+function parseJson(value) {
+  try { return JSON.parse(value); } catch { fail(400, 'invalid_json'); }
+}
+
+async function readRequestBody(request) {
+  const contentLengthHeader = header(request, 'content-length');
+  if (contentLengthHeader !== undefined && contentLengthHeader !== null) {
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isFinite(contentLength) || contentLength < 0) fail(400, 'invalid_content_length');
+    if (contentLength > MAX_REQUEST_BYTES) fail(413, 'request_too_large');
+  }
+
+  const body = request.body;
+  if (typeof body === 'string') {
+    if (Buffer.byteLength(body) > MAX_REQUEST_BYTES) fail(413, 'request_too_large');
+    return parseJson(body);
+  }
+  if (Buffer.isBuffer(body) || ArrayBuffer.isView(body)) {
+    if (body.byteLength > MAX_REQUEST_BYTES) fail(413, 'request_too_large');
+    return parseJson(Buffer.from(body.buffer || body, body.byteOffset || 0, body.byteLength).toString('utf8'));
+  }
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+    const chunks = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = value instanceof Uint8Array
+          ? Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+          : Buffer.from(value);
+        length += chunk.length;
+        if (length > MAX_REQUEST_BYTES) {
+          void reader.cancel().catch(() => {});
+          fail(413, 'request_too_large');
+        }
+        chunks.push(chunk);
+      }
+    } catch (error) {
+      if (error instanceof AdapterError) throw error;
+      fail(400, 'invalid_body');
+    } finally {
+      reader.releaseLock();
+    }
+    return parseJson(Buffer.concat(chunks, length).toString('utf8'));
+  }
+  if (body && typeof body === 'object') return body;
+  fail(400, 'invalid_request');
+}
+
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') {
@@ -353,14 +404,7 @@ export function createAdsEmployeeVideoAdapter({
     } catch {}
     if (!validOrigin) fail(403, 'origin_not_allowed');
 
-    const contentLength = Number(header(request, 'content-length'));
-    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) fail(413, 'request_too_large');
-    let requestBody = request.body;
-    if (typeof requestBody === 'string') {
-      try { requestBody = JSON.parse(requestBody); } catch { fail(400, 'invalid_json'); }
-    } else if (typeof request.json === 'function') {
-      try { requestBody = await request.json(); } catch { fail(400, 'invalid_json'); }
-    }
+    const requestBody = await readRequestBody(request);
     if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) fail(400, 'invalid_request');
     if (Buffer.byteLength(JSON.stringify(requestBody)) > MAX_REQUEST_BYTES) fail(413, 'request_too_large');
     const { operation, projectRef, idempotencyKey, jobRef, taskId, input = {} } = requestBody;

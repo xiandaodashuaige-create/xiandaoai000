@@ -604,6 +604,28 @@ test('origin, supported format, and upload reference boundaries are enforced', a
   assert.equal(unsupported.body.error, 'unsupported_format_or_mode');
   const oversized = await h.handler(request('status', { jobRef: 'job-ref', extra: 'x'.repeat(65 * 1024) }));
   assert.equal(oversized.status, 413);
+  let jsonParserCalled = false;
+  const streamBytes = new TextEncoder().encode(JSON.stringify({
+    operation: 'status',
+    projectRef: 'project-A',
+    jobRef: 'job-ref',
+    extra: 'x'.repeat(65 * 1024),
+  }));
+  const streamed = await h.handler({
+    headers: { origin: ORIGIN },
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(streamBytes);
+        controller.close();
+      },
+    }),
+    json() {
+      jsonParserCalled = true;
+      throw new Error('must not parse unbounded');
+    },
+  });
+  assert.equal(streamed.status, 413);
+  assert.equal(jsonParserCalled, false);
   assert.equal(h.calls.length, 0);
 });
 

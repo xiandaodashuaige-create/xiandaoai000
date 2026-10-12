@@ -33,7 +33,9 @@ The reservation must be atomic across concurrent server instances. A lost respon
 
 ### Request boundary
 
-The server passes a parsed request shaped as:
+Pass either a parsed `body` (the framework's JSON parser must enforce the same 64 KiB limit before parsing) or a Web `ReadableStream` body. The adapter enforces the limit while reading streams and validates parsed-body size; it never falls back to an unbounded `request.json()` call.
+
+The parsed request is shaped as:
 
 ```json
 {
