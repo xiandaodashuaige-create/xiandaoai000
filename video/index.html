@@ -21,6 +21,9 @@ a{color:inherit}
 .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:56px}
 .brand{font-weight:900;letter-spacing:.12em;color:var(--green2);font-size:13px}
 .smallbtn{border:1px solid var(--line);background:#0d1b15;color:#dff5e7;border-radius:11px;padding:9px 12px;cursor:pointer}
+.topactions{display:flex;gap:8px;align-items:center}.projecthome{display:block}.projecthome h1{font-size:clamp(30px,6vw,48px);margin:0 0 8px;letter-spacing:-1.3px}.projecthome>p{margin:0 0 22px;color:var(--muted);line-height:1.7}.projecthead{display:flex;justify-content:space-between;align-items:end;gap:14px;margin-bottom:16px}.projecthead h2{margin:0;font-size:18px}.projecthead p{margin:5px 0 0;color:var(--muted);font-size:12px}.projectgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.projectcard{border:1px solid var(--line);background:linear-gradient(145deg,#0d2018,#091711);border-radius:18px;padding:17px;text-align:left;color:var(--text);cursor:pointer;transition:.2s}.projectcard:hover{border-color:var(--green);transform:translateY(-2px)}.projectcard .projecttype{display:inline-flex;padding:4px 8px;border-radius:999px;background:#173526;color:var(--green2);font-size:10px;font-weight:800}.projectcard h3{font-size:17px;margin:12px 0 6px}.projectcard p{font-size:11px;color:var(--muted);line-height:1.6;min-height:36px;margin:0}.projectcard .projectmeta{margin-top:13px;padding-top:11px;border-top:1px solid #1e3b2f;color:#a8bbb0;font-size:10px}.projectempty{grid-column:1/-1;border:1px dashed #315744;border-radius:18px;padding:30px;text-align:center;color:var(--muted)}
+.projectbar{display:flex;align-items:center;gap:12px;border:1px solid var(--line);background:#0b1b14;border-radius:16px;padding:12px 14px;margin:-28px 0 28px}.projectbar .projectinfo{flex:1;min-width:0}.projectbar b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.projectbar small{display:block;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.projectbar .projectlock{font-size:10px;color:var(--green2);background:#153326;border-radius:999px;padding:5px 8px;white-space:nowrap}
+body:not(.project-open) .projectbar,body:not(.project-open) .hero,body:not(.project-open) .modepicker,body:not(.project-open) .composer,body:not(.project-open) .history{display:none}body.project-open .projecthome{display:none}
 .hero{text-align:center;margin-bottom:28px}
 .hero h1{font-size:clamp(34px,7vw,56px);line-height:1.08;margin:0 0 14px;letter-spacing:-1.8px}
 .hero p{color:var(--muted);font-size:15px;line-height:1.7;margin:0}
@@ -97,11 +100,13 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 .box input{width:100%;background:#07140f;color:white;border:1px solid #2b4d3e;border-radius:11px;padding:12px 13px;outline:0}
 .box button{margin-top:10px;width:100%;border:0;border-radius:11px;padding:12px;background:var(--green);color:#052114;font-weight:900;cursor:pointer}
 .box button.secondary{background:transparent;color:#b9c9c0;border:1px solid #2b4d3e;font-weight:700}
+.projectform{display:grid;grid-template-columns:1fr 1fr;gap:10px}.projectform .wide{grid-column:1/-1}.projectform label{display:block;color:#a8bbb0;font-size:10px;font-weight:800;margin-bottom:5px}.projectform input,.projectform textarea,.projectform select{width:100%;min-height:auto;background:#07140f;color:white;border:1px solid #2b4d3e;border-radius:10px;padding:10px;outline:0}.projectform textarea{height:70px;resize:vertical}.box.projectbox{width:min(650px,100%);max-height:90vh;overflow:auto}
 @media(max-width:600px){
   .page{padding-top:18px}.top{margin-bottom:40px}.hero{text-align:left}.hero p{font-size:13px}
   .composer{padding:14px;border-radius:20px}.drop{min-height:130px}
-  .modepicker,.formgrid,.uploadgrid,.storyline{grid-template-columns:1fr}.formgrid .wide{grid-column:auto}
+  .modepicker,.formgrid,.uploadgrid,.storyline,.projectgrid,.projectform{grid-template-columns:1fr}.formgrid .wide,.projectform .wide{grid-column:auto}
   .modecard{grid-template-columns:44px 1fr}.newtag{display:none}.panelhead{display:block}.modepill{display:inline-block;margin-top:9px}
+  .projecthead{align-items:flex-start}.projectbar{margin:-22px 0 24px;flex-wrap:wrap}.projectbar .projectlock{display:none}
 }
 </style>
 </head>
@@ -109,7 +114,22 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
 <div class="page">
   <div class="top">
     <div class="brand">LULIAN AI · VIDEO</div>
-    <button id="openAccess" class="smallbtn">员工入口</button>
+    <div class="topactions"><button id="backProjects" class="smallbtn" style="display:none">全部项目</button><button id="openAccess" class="smallbtn">员工入口</button></div>
+  </div>
+
+  <section id="projectHome" class="projecthome">
+    <div class="projecthead">
+      <div><h1>视频项目中心</h1><p>每个业务独立使用自己的资料、规则和历史视频，避免不同客户与项目互相混用。</p></div>
+      <button id="newProjectBtn" class="primary" style="flex:0 0 auto;padding:11px 16px;font-size:13px">＋ 新建项目</button>
+    </div>
+    <div id="projectGrid" class="projectgrid"><div class="projectempty">登录后显示内部项目。</div></div>
+  </section>
+
+  <div id="projectBar" class="projectbar">
+    <button id="projectBackBtn" class="smallbtn">← 项目中心</button>
+    <div class="projectinfo"><b id="currentProjectName">当前项目</b><small id="currentProjectMeta">业务资料已锁定</small></div>
+    <span class="projectlock">✓ 素材与历史隔离</span>
+    <button id="editProjectBtn" class="smallbtn">项目资料</button>
   </div>
 
   <section class="hero">
@@ -263,6 +283,27 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
   </details>
 </div>
 
+<div id="projectModal" class="modal">
+  <div class="box projectbox">
+    <h2 id="projectModalTitle">新建视频项目</h2>
+    <p>这里保存的是该业务长期使用的固定信息。之后混剪和 AI 成片都只读取这个项目。</p>
+    <div class="projectform">
+      <div><label>项目名称 *</label><input id="vpName" placeholder="例如：XX门店 · 美睫"></div>
+      <div><label>业务类型 *</label><input id="vpType" placeholder="例如：美睫 / 头疗 / 线下AI培训"></div>
+      <div><label>客户或品牌</label><input id="vpClient" placeholder="例如：XX Beauty"></div>
+      <div><label>默认语言</label><select id="vpLanguage"><option>普通话</option><option>马来西亚华语</option><option>香港粤语</option><option>繁体中文</option></select></div>
+      <div class="wide"><label>业务说明</label><textarea id="vpSummary" placeholder="主要服务、特色和真实优势"></textarea></div>
+      <div class="wide"><label>目标客户</label><textarea id="vpAudience" placeholder="希望吸引哪些人、位于哪里、主要需求是什么"></textarea></div>
+      <div class="wide"><label>准确价格 / 优惠 / 事实</label><textarea id="vpFacts" placeholder="只能写确认过的价格、币种、地址、活动和报名信息"></textarea></div>
+      <div class="wide"><label>默认行动引导 CTA</label><textarea id="vpCta" placeholder="例如：点击 WhatsApp 预约到店体验"></textarea></div>
+      <div><label>必须出现</label><textarea id="vpInclude" placeholder="品牌、服务名、联系方式等"></textarea></div>
+      <div><label>禁止出现</label><textarea id="vpExclude" placeholder="其他业务、错误币种、禁用说法等"></textarea></div>
+    </div>
+    <button id="projectSaveBtn">保存项目</button>
+    <button id="projectCancelBtn" class="secondary">取消</button>
+  </div>
+</div>
+
 <div id="revisionModal" class="modal">
   <div class="box">
     <h2>基于上一版继续改</h2>
@@ -304,6 +345,9 @@ const $=id=>document.getElementById(id);
 
 let selected=[];
 let revisionParent=null;
+let projects=[];
+let currentProject=null;
+let editingProjectId=null;
 const saved=sessionStorage.getItem('lulianVideoAccess')||'';
 $('access').value=saved;
 
@@ -329,7 +373,7 @@ $('loginBtn').onclick=async()=>{
   try{
     await api('auth');
     hideModal();
-    await loadJobs();
+    await loadProjects();
   }catch(e){
     sessionStorage.removeItem('lulianVideoAccess');
     alert(e.message==='unauthorized'?'口令不正确':'后台暂时不可用：'+e.message);
@@ -345,6 +389,97 @@ async function api(action,body={}){
   if(!r.ok||data.error)throw new Error(data.error||'请求失败');
   return data;
 }
+
+function projectPayload(){
+  return {
+    project_name:$('vpName').value.trim(),
+    client_name:$('vpClient').value.trim(),
+    business_type:$('vpType').value.trim(),
+    business_summary:$('vpSummary').value.trim(),
+    target_audience:$('vpAudience').value.trim(),
+    offer_facts:$('vpFacts').value.trim(),
+    cta:$('vpCta').value.trim(),
+    default_language:$('vpLanguage').value,
+    must_include:$('vpInclude').value.trim(),
+    must_exclude:$('vpExclude').value.trim()
+  };
+}
+function openProjectModal(project=null){
+  editingProjectId=project?.id||null;
+  $('projectModalTitle').textContent=project?'编辑项目资料':'新建视频项目';
+  $('vpName').value=project?.project_name||'';
+  $('vpClient').value=project?.client_name||'';
+  $('vpType').value=project?.business_type||'';
+  $('vpSummary').value=project?.business_summary||'';
+  $('vpAudience').value=project?.target_audience||'';
+  $('vpFacts').value=project?.offer_facts||'';
+  $('vpCta').value=project?.cta||'';
+  $('vpLanguage').value=project?.default_language||'普通话';
+  $('vpInclude').value=project?.must_include||'';
+  $('vpExclude').value=project?.must_exclude||'';
+  $('projectModal').classList.add('show');
+}
+function showProjectHome(){
+  document.body.classList.remove('project-open');
+  $('backProjects').style.display='none';
+  currentProject=null;
+  sessionStorage.removeItem('lulianVideoProjectId');
+  renderProjects();
+}
+async function selectProject(project){
+  currentProject=project;
+  sessionStorage.setItem('lulianVideoProjectId',project.id);
+  document.body.classList.add('project-open');
+  $('backProjects').style.display='inline-block';
+  $('currentProjectName').textContent=project.project_name;
+  $('currentProjectMeta').textContent=[project.client_name,project.business_type,project.default_language].filter(Boolean).join(' · ');
+  $('aiBusiness').value=project.business_type||'';
+  $('aiAudience').value=project.target_audience||'';
+  $('aiFacts').value=project.offer_facts||'';
+  $('aiAction').value=project.cta||'';
+  const voice=[...$('aiVoice').options].find(o=>o.value.startsWith(project.default_language||''));
+  if(voice)$('aiVoice').value=voice.value;
+  await loadJobs();
+}
+function renderProjects(){
+  $('projectGrid').innerHTML=projects.length?projects.map(p=>`<button class="projectcard" data-project-id="${p.id}">
+    <span class="projecttype">${escapeHtml(p.business_type)}</span>
+    <h3>${escapeHtml(p.project_name)}</h3>
+    <p>${escapeHtml(p.business_summary||p.target_audience||'尚未填写业务说明')}</p>
+    <div class="projectmeta">${escapeHtml([p.client_name,p.default_language].filter(Boolean).join(' · ')||'内部项目')}</div>
+  </button>`).join(''):'<div class="projectempty">还没有项目。点击“新建项目”，先建立一个独立业务空间。</div>';
+  document.querySelectorAll('.projectcard').forEach(card=>card.onclick=()=>{
+    const project=projects.find(p=>p.id===card.dataset.projectId);
+    if(project)selectProject(project);
+  });
+}
+async function loadProjects(){
+  const data=await api('list_projects');
+  projects=data.projects||[];
+  renderProjects();
+  const savedProject=sessionStorage.getItem('lulianVideoProjectId');
+  const project=projects.find(p=>p.id===savedProject);
+  if(project)await selectProject(project);else showProjectHome();
+}
+$('newProjectBtn').onclick=()=>openProjectModal();
+$('editProjectBtn').onclick=()=>currentProject&&openProjectModal(currentProject);
+$('projectCancelBtn').onclick=()=>{$('projectModal').classList.remove('show');editingProjectId=null};
+$('projectBackBtn').onclick=showProjectHome;
+$('backProjects').onclick=showProjectHome;
+$('projectSaveBtn').onclick=async()=>{
+  const payload=projectPayload();
+  if(!payload.project_name||!payload.business_type){alert('请填写项目名称和业务类型');return}
+  const btn=$('projectSaveBtn');btn.disabled=true;btn.textContent='保存中…';
+  try{
+    const data=await api(editingProjectId?'update_project':'create_project',editingProjectId?{...payload,project_id:editingProjectId}:payload);
+    $('projectModal').classList.remove('show');
+    editingProjectId=null;
+    await loadProjects();
+    const project=projects.find(p=>p.id===data.project.id);
+    if(project)await selectProject(project);
+  }catch(e){alert('项目保存失败：'+e.message)}
+  finally{btn.disabled=false;btn.textContent='保存项目'}
+};
 
 function addFiles(list){
   for(const f of list){
@@ -386,11 +521,12 @@ function setAiStatus(text,pct){
 $('submitBtn').onclick=async()=>{
   const btn=$('submitBtn');btn.disabled=true;
   try{
+    if(!currentProject)throw new Error('请先选择一个业务项目');
     const brief=$('brief').value.trim();
     if(!brief)throw new Error('先告诉我你想做什么');
     const autoName='视频任务 '+new Date().toLocaleDateString()+' '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     setStatus('正在创建任务…',2);
-    const init=await api('init_job',{project_name:$('projectName').value.trim()||autoName,brief,output_count:Number($('outputCount').value)});
+    const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'remix',project_name:$('projectName').value.trim()||autoName,brief,output_count:Number($('outputCount').value)});
     const meta=[];
     for(let i=0;i<selected.length;i++)meta.push(await uploadOne(init.job.id,selected[i],i,selected.length));
     setStatus('素材已上传，交给视频工厂…',93);
@@ -414,6 +550,7 @@ function aiInputFiles(){
 $('aiSubmitBtn').onclick=async()=>{
   const btn=$('aiSubmitBtn');btn.disabled=true;
   try{
+    if(!currentProject)throw new Error('请先选择一个业务项目');
     const business=$('aiBusiness').value.trim();
     const audience=$('aiAudience').value.trim();
     const facts=$('aiFacts').value.trim();
@@ -447,7 +584,7 @@ $('aiSubmitBtn').onclick=async()=>{
 - 成片前自动检查：人物清晰、嘴型自然、动作真实、镜头衔接、声画匹配、字幕安全区、连续音轨和 CTA。`;
     const autoName='AI创意成片 · '+business+' · '+new Date().toLocaleDateString();
     setAiStatus('正在创建 AI 创意任务…',2);
-    const init=await api('init_job',{project_name:$('aiProjectName').value.trim()||autoName,brief,output_count:Number($('aiOutputCount').value)});
+    const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'ai_hybrid',project_name:$('aiProjectName').value.trim()||autoName,brief,output_count:Number($('aiOutputCount').value)});
     const files=aiInputFiles(),meta=[];
     for(let i=0;i<files.length;i++)meta.push(await uploadOne(init.job.id,files[i].file,i,files.length,files[i].role,'ai'));
     setAiStatus('素材已分类，正在提交 AI 生成与真实证据编排…',93);
@@ -500,7 +637,8 @@ $('revisionSubmit').onclick=async()=>{
   finally{btn.disabled=false;btn.textContent='生成下一版'}
 };
 async function loadJobs(){
-  const data=await api('list_jobs');
+  if(!currentProject){$('jobs').innerHTML='<div class="empty">请先选择项目。</div>';return}
+  const data=await api('list_jobs',{video_project_id:currentProject.id});
   $('jobs').innerHTML=data.jobs?.length?data.jobs.map(j=>`
     <div class="job">
       <div class="jobhead"><b>${escapeHtml(j.project_name)} ${String(j.project_name||'').startsWith('AI创意成片 · ')?'<span class="jobtype">AI创意成片</span>':''}<span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
@@ -538,7 +676,7 @@ async function showJob(id){
   });
 }
 function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-if(saved)loadJobs().catch(()=>showModal());
+if(saved)(async()=>{try{await api('auth');await loadProjects()}catch{showModal()}})();
 </script>
 </body>
 </html>
