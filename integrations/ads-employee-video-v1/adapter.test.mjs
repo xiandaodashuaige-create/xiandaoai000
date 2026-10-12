@@ -411,6 +411,33 @@ test('a pre-existing mismatched revision from the media service is rejected, not
   assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
 });
 
+test('an incomplete parent does not reserve the revision key and can be revised after completion', async () => {
+  let parentJob = syntheticQueuedJob;
+  const h = harness({
+    transport: async (action, body) => {
+      if (action === 'status') return { status: 200, body: syntheticJobEnvelope(parentJob) };
+      return defaultTransport(action, body);
+    },
+  });
+  const created = await createJob(h);
+  const revisionRequest = request('create_revision', {
+    jobRef: created.body.result.jobRef,
+    idempotencyKey: 'revision-after-completion',
+    input: { prompt: 'Update the ending', scope: 'cta' },
+  });
+  const premature = await h.handler(revisionRequest);
+  assert.equal(premature.status, 409);
+  assert.equal(premature.body.error, 'parent_job_not_completed');
+  assert.equal([...h.persistence.operations.values()].some((operation) => operation.details.logicalKey?.startsWith('revision:')), false);
+  assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 0);
+
+  parentJob = syntheticCompletedJob;
+  const retried = await h.handler(revisionRequest);
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.result.parentJobRef, created.body.result.jobRef);
+  assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
+});
+
 test('queued and incomplete completed records never claim a final asset; signed URLs expire explicitly', async () => {
   const h = harness({
     transport: async (action, body) => {
