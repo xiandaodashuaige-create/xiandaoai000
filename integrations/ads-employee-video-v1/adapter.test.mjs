@@ -28,6 +28,7 @@ const brief = {
 
 function fakePersistence() {
   const operations = new Map();
+  const logicalOperations = new Map();
   const jobs = new Map();
   const uploads = new Map();
   const snapshots = [];
@@ -39,12 +40,13 @@ function fakePersistence() {
     jobs,
     uploads,
     snapshots,
-    async reserveOperation({ scope, key, fingerprint, details }) {
+    async reserveOperation({ scope, key, fingerprint, details, logicalKey }) {
       const id = keyFor(scope, key);
-      const found = operations.get(id);
+      const found = operations.get(id) || (logicalKey && logicalOperations.get(keyFor(scope, logicalKey)));
       if (found) return { created: false, record: found };
-      const record = { fingerprint, state: 'reserved', result: null, details };
+      const record = { key, logicalKey, fingerprint, state: 'reserved', result: null, details };
       operations.set(id, record);
+      if (logicalKey) logicalOperations.set(keyFor(scope, logicalKey), record);
       return { created: true, record };
     },
     async completeOperation({ scope, key, fingerprint, result, details }) {
@@ -167,6 +169,12 @@ test('unknown tenants and foreign job references fail before contacting the medi
 
   const created = await createJob(h);
   assert.equal(created.status, 200);
+  const spoofedTenant = await h.handler(request('status', {
+    jobRef: created.body.result.jobRef,
+    tenantId: 'tenant-B',
+  }));
+  assert.equal(spoofedTenant.status, 200);
+  assert.equal(h.calls.at(-1).body.job_id, created.body.result.jobId);
   const foreign = harness({
     context: { actorId: 'actor-B', tenantId: 'tenant-B', role: 'customer' },
     persistence: h.persistence,
@@ -184,12 +192,14 @@ test('unknown tenants and foreign job references fail before contacting the medi
 
 test('worker/admin operations are not in the customer integration allowlist', async () => {
   const h = harness();
-  const response = await h.handler(request('worker_update', {
-    jobRef: 'job',
-    input: { status: 'completed', output_files: [] },
-  }));
-  assert.equal(response.status, 400);
-  assert.equal(response.body.error, 'operation_not_allowed');
+  for (const operation of ['worker_update', 'accept_job']) {
+    const response = await h.handler(request(operation, {
+      jobRef: 'job',
+      input: { status: 'completed', output_files: [] },
+    }));
+    assert.equal(response.status, 400);
+    assert.equal(response.body.error, 'operation_not_allowed');
+  }
   assert.equal(h.calls.length, 0);
 });
 
@@ -277,6 +287,12 @@ test('repeated submit and revision keys reuse stored results; an ambiguous write
     return () => `integration-job-${++n}`;
   })() });
   const created = await createJob(h);
+  const repeatedCreate = await createJob(h);
+  assert.deepEqual(repeatedCreate, created);
+  assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
+  const createWithNewKey = await h.handler(createRequest({ idempotencyKey: 'create-key-2' }));
+  assert.deepEqual(createWithNewKey, created);
+  assert.equal(h.calls.filter((call) => call.action === 'init_job').length, 1);
   const jobRef = created.body.result.jobRef;
   const prepared = await h.handler(request('prepare_upload', {
     jobRef,
@@ -289,7 +305,11 @@ test('repeated submit and revision keys reuse stored results; an ambiguous write
     input: { uploadRefs: [prepared.body.result.uploadRef] },
   });
   const firstSubmit = await h.handler(submit);
-  const secondSubmit = await h.handler(submit);
+  const secondSubmit = await h.handler(request('submit_job', {
+    jobRef,
+    idempotencyKey: 'submit-once-new-key',
+    input: { uploadRefs: [prepared.body.result.uploadRef] },
+  }));
   assert.deepEqual(secondSubmit, firstSubmit);
   assert.equal(h.calls.filter((call) => call.action === 'submit_job').length, 1);
 
@@ -299,7 +319,11 @@ test('repeated submit and revision keys reuse stored results; an ambiguous write
     input: { prompt: 'Adjust the ending', scope: 'cta' },
   });
   const firstRevision = await h.handler(revision);
-  const secondRevision = await h.handler(revision);
+  const secondRevision = await h.handler(request('create_revision', {
+    jobRef,
+    idempotencyKey: 'revision-once-new-key',
+    input: { prompt: 'Adjust the ending', scope: 'cta' },
+  }));
   assert.deepEqual(secondRevision, firstRevision);
   assert.equal(h.calls.filter((call) => call.action === 'create_revision').length, 1);
 
@@ -311,7 +335,7 @@ test('repeated submit and revision keys reuse stored results; an ambiguous write
     },
   });
   const first = await createJob(ambiguous);
-  const retry = await createJob(ambiguous);
+  const retry = await ambiguous.handler(createRequest({ idempotencyKey: 'create-key-2' }));
   assert.equal(first.body.error, 'upstream_unavailable');
   assert.equal(retry.body.error, 'reconciliation_required');
   assert.equal(ambiguous.calls.filter((call) => call.action === 'init_job').length, 1);
@@ -440,6 +464,8 @@ test('origin, supported format, and upload reference boundaries are enforced', a
     input: { projectName: 'Unsupported', mode: 'remix', creativeBrief: { ...brief, desired: { ...brief.desired, format: 'square-video' } } },
   }));
   assert.equal(unsupported.body.error, 'unsupported_format_or_mode');
+  const oversized = await h.handler(request('status', { jobRef: 'job-ref', extra: 'x'.repeat(65 * 1024) }));
+  assert.equal(oversized.status, 413);
   assert.equal(h.calls.length, 0);
 });
 

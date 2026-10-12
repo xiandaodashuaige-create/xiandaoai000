@@ -47,4 +47,3 @@ export const syntheticUploadEnvelope = {
   content_type: 'image/jpeg',
 };
 export const syntheticFeedbackEnvelope = { ok: true, feedback: { id: 'feedback-synthetic-001' } };
-

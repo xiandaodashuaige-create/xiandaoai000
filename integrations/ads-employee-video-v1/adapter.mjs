@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const ACTIONS = new Set([
   'create_job',
@@ -46,7 +46,7 @@ function canonical(value) {
 }
 
 function fingerprint(value) {
-  return JSON.stringify(canonical(value));
+  return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 }
 
 function text(value, name, maxLength, { required = true } = {}) {
@@ -279,14 +279,16 @@ export function createAdsEmployeeVideoAdapter({
       key: scopedKey,
       fingerprint: bodyFingerprint,
       details,
+      logicalKey: details.logicalKey || null,
     });
     if (!reservation || !reservation.record) fail(503, 'idempotency_store_unavailable');
     if (reservation.record.fingerprint !== bodyFingerprint) fail(409, 'idempotency_conflict');
     if (reservation.record.state === 'completed') return reservation.record.result;
+    const storedKey = reservation.record.key || scopedKey;
     if (!reservation.created) {
       const reconciled = await persistence.reconcileOperation({
         scope,
-        key: scopedKey,
+        key: storedKey,
         record: reservation.record,
         details,
       });
@@ -297,7 +299,7 @@ export function createAdsEmployeeVideoAdapter({
     const additionalDetails = await completionDetails(result, reservation.record);
     await persistence.completeOperation({
       scope,
-      key: scopedKey,
+      key: storedKey,
       fingerprint: bodyFingerprint,
       result,
       details: { ...reservation.record.details, ...details, ...additionalDetails },
@@ -364,6 +366,7 @@ export function createAdsEmployeeVideoAdapter({
       const createPayload = { projectName, mode: selectedMode, snapshot };
       const jobRefForCreate = createId();
       return await mutation(scope, operation, idempotencyKey, createPayload, {
+        logicalKey: `task:${canonicalTaskId}`,
         jobRef: jobRefForCreate,
         taskId: canonicalTaskId,
         snapshot,
@@ -405,6 +408,7 @@ export function createAdsEmployeeVideoAdapter({
       const uploadRef = createId();
       const uploadPayload = { jobRef, fileName, contentType, role };
       return mutation(scope, operation, idempotencyKey, uploadPayload, {
+        logicalKey: `upload:${jobRef}:${fingerprint(uploadPayload)}`,
         jobRef,
         uploadRef,
         taskId: mapping.taskId,
@@ -459,6 +463,7 @@ export function createAdsEmployeeVideoAdapter({
       }
       const submitPayload = { jobRef, inputFiles };
       return mutation(scope, operation, idempotencyKey, submitPayload, {
+        logicalKey: `submit:${jobRef}`,
         jobRef,
         taskId: mapping.taskId,
       }, async (record) => {
@@ -503,6 +508,7 @@ export function createAdsEmployeeVideoAdapter({
       const revisionPayload = { jobRef, prompt: revisionPrompt, scope: revisionScope };
       const revisionRef = createId();
       return mutation(scope, operation, idempotencyKey, revisionPayload, {
+        logicalKey: `revision:${jobRef}:${fingerprint(revisionPayload)}`,
         jobRef: revisionRef,
         taskId: parent.taskId,
         parentJobRef: jobRef,
