@@ -5,6 +5,7 @@ const PUBLIC_KEY = "sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ";
 const INPUT_BUCKET = "video-agent-inputs";
 const RESULT_BUCKET = "video-agent-results";
 const ACCESS_HASH = "f8be225d581edd163be04866ccf14d262f24d519fd6b3f33aa6c885c276c0dd6";
+const CLOUD_WORKER_URL = "https://www.xiandaoai.com/api/video-worker";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -168,6 +169,13 @@ Deno.serve(async (req: Request) => {
         p_input_files: Array.isArray(body.input_files) ? body.input_files : [],
       });
       if (error) return json({ error: errMsg(error) }, 500);
+      if (data?.execution_target === "cloud") {
+        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-video-access": access },
+          body: JSON.stringify({ source: "submit_job", job_id: data.id }),
+        }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
+      }
       return json({ ok: true, job: data });
     }
 
@@ -179,6 +187,13 @@ Deno.serve(async (req: Request) => {
         p_revision_scope: String(body.revision_scope || "auto"),
       });
       if (error) return json({ error: errMsg(error) }, 500);
+      if (data?.execution_target === "cloud") {
+        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-video-access": access },
+          body: JSON.stringify({ source: "create_revision", job_id: data.id }),
+        }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
+      }
       return json({ ok: true, job: data });
     }
 
