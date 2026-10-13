@@ -98,6 +98,110 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, project: data });
     }
 
+    if (action === "provider_upsert_project") {
+      const { data, error } = await sb.rpc("video_agent_provider_upsert_project", {
+        p_access: access,
+        p_tenant_id: String(body.tenant_id || ""),
+        p_external_project_id: String(body.project_id || ""),
+        p_project_name: String(body.project_name || ""),
+        p_client_name: String(body.client_name || ""),
+        p_business_type: String(body.business_type || ""),
+        p_business_summary: String(body.business_summary || ""),
+        p_target_audience: String(body.target_audience || ""),
+        p_offer_facts: String(body.offer_facts || ""),
+        p_cta: String(body.cta || ""),
+        p_default_language: String(body.default_language || "普通话"),
+        p_must_include: String(body.must_include || ""),
+        p_must_exclude: String(body.must_exclude || ""),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, project: data });
+    }
+
+    if (action === "provider_init_job") {
+      const { data, error } = await sb.rpc("video_agent_provider_create_job", {
+        p_access: access,
+        p_tenant_id: String(body.tenant_id || ""),
+        p_external_project_id: String(body.project_id || ""),
+        p_conversation_session_id: String(body.conversation_session_id || ""),
+        p_correlation_id: String(body.correlation_id || ""),
+        p_idempotency_key: String(body.idempotency_key || ""),
+        p_brief: String(body.brief || ""),
+        p_workflow_mode: String(body.workflow_mode || "ai_hybrid"),
+        p_output_count: Number(body.output_count || 1),
+        p_provider: body.provider ? String(body.provider) : null,
+        p_model: body.model ? String(body.model) : null,
+        p_estimated_cost: body.estimated_cost == null ? null : Number(body.estimated_cost),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "provider_status") {
+      const { data, error } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access,
+        p_tenant_id: String(body.tenant_id || ""),
+        p_external_project_id: String(body.project_id || ""),
+        p_job_id: String(body.job_id || ""),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "provider_sign_upload") {
+      const tenantId = String(body.tenant_id || "");
+      const projectId = String(body.project_id || "");
+      const jobId = String(body.job_id || "");
+      const { data: scopedJob, error: scopeError } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access, p_tenant_id: tenantId, p_external_project_id: projectId, p_job_id: jobId,
+      });
+      if (scopeError || !scopedJob?.id) return json({ error: errMsg(scopeError) }, 404);
+      const { data, error } = await sb.rpc("video_agent_issue_path", {
+        p_access: access, p_job_id: jobId, p_bucket: INPUT_BUCKET, p_file_name: String(body.file_name || "file"),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, bucket: INPUT_BUCKET, path: data, content_type: String(body.content_type || "application/octet-stream") });
+    }
+
+    if (action === "provider_submit_job") {
+      const tenantId = String(body.tenant_id || "");
+      const projectId = String(body.project_id || "");
+      const jobId = String(body.job_id || "");
+      const { data: scopedJob, error: scopeError } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access, p_tenant_id: tenantId, p_external_project_id: projectId, p_job_id: jobId,
+      });
+      if (scopeError || !scopedJob?.id) return json({ error: errMsg(scopeError) }, 404);
+      const { data, error } = await sb.rpc("video_agent_submit_job", {
+        p_access: access, p_job_id: jobId, p_input_files: Array.isArray(body.input_files) ? body.input_files : [],
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      if (data?.execution_target === "cloud") {
+        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-video-access": access },
+          body: JSON.stringify({ source: "provider_submit_job", job_id: data.id }),
+        }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
+      }
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "provider_download_url") {
+      const tenantId = String(body.tenant_id || "");
+      const projectId = String(body.project_id || "");
+      const jobId = String(body.job_id || "");
+      const bucket = String(body.bucket || "");
+      const objectPath = String(body.path || "");
+      if (![INPUT_BUCKET, RESULT_BUCKET].includes(bucket)) return json({ error: "invalid_bucket" }, 400);
+      const { data: scopedJob, error: scopeError } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access, p_tenant_id: tenantId, p_external_project_id: projectId, p_job_id: jobId,
+      });
+      if (scopeError || !scopedJob?.id) return json({ error: errMsg(scopeError) }, 404);
+      const allowedFiles = [...(Array.isArray(scopedJob.input_files) ? scopedJob.input_files : []), ...(Array.isArray(scopedJob.output_files) ? scopedJob.output_files : [])];
+      if (!allowedFiles.some((file: any) => String(file?.path || "") === objectPath)) return json({ error: "path_not_in_scoped_job" }, 403);
+      const { data, error } = await sb.storage.from(bucket).createSignedUrl(objectPath, 3600);
+      if (error || !data?.signedUrl) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, url: data.signedUrl });
+    }
+
     if (action === "init_job") {
       const projectId = String(body.video_project_id || "");
       const rpc = projectId ? "video_agent_create_project_job" : "video_agent_create_job";
