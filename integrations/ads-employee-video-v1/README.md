@@ -8,6 +8,7 @@ From the repository root:
 
 ```sh
 node --test integrations/ads-employee-video-v1/adapter.test.mjs
+node --test integrations/ads-employee-video-v1/a3-caller.test.mjs
 ```
 
 `fixtures.mjs` contains **synthetic** examples shaped like the inspected edge-function envelopes (`{ ok: true, job }`, `{ ok: true, bucket, path }`, `{ ok: true, url }`, and `{ ok: true, feedback }`). These are not live captures. The tests inject transport, authorization, project binding, persistence, clock, and retry delay; they do not connect to Supabase or mutate existing jobs.
@@ -96,6 +97,19 @@ The minimum customer result card should show:
 
 `prepare_upload` returns a server-issued path, not a final creative and not a signed upload URL. Uploading a reference by itself is not a final asset; submit only persisted upload references for that mapped job. `download_url` accepts an asset reference, never a path or bucket. Returned signed URLs expire (the existing API currently issues a 3,600-second URL); request a fresh URL when needed. Any future ad-upload step must obtain a fresh, appropriately scoped asset reference and URL. Do not make storage public to avoid expiry.
 
+## A3 caller handoff (synthetic/offline)
+
+The A3-facing wrapper in `a3-caller.mjs` exports:
+
+- `createA3VideoCaller({ authorize, resolveBinding, transport, persistence, allowedOrigins, signedUrlOrigins, validatePrivateReferences, ...adapterOptions })` — constructs and wraps the existing adapter; it is not another media provider or chat engine.
+- `projectA3VideoResult(result)` — produces a narrow customer result/event projection using product label `A3`, presentation label `AI视频员工`, and display role `ai_video_employee`. The role is metadata only and never grants authority.
+
+The wrapper uses the same server-authenticated actor, tenant/project binding, transport, and durable persistence as the existing adapter. Its required `validatePrivateReferences` hook receives the adapter-resolved trusted actor/tenant/project scope, `materialVersionRef`, and the complete `referenceAssets` list before any create reservation, snapshot write, or media transport. The caller must resolve the material version and every private asset against its existing authorised library and return `true` only when all belong to this exact scope. A string supplied by the browser is not proof of ownership; a failed, missing, or throwing validator fails closed. Do not fetch arbitrary URLs or create a parallel asset database. Existing upload references remain mapped by the adapter to their owning job.
+
+The A3 projection maps uploading/submitted to `STARTED`, queued/rendering to `PROGRESS`, missing/incomplete output to `NEEDS_INPUT`, and failed to `FAILED`. A valid completed manifest maps to `COMPLETED` plus `APPROVAL_REQUIRED`; this is not permission to publish an ad. It returns caller task/job/version/parent references and only confirmed manifest metadata; media job IDs, tenant IDs, paths, credentials, and unrecognized upstream objects are omitted. Duration and cost remain `null` when unavailable. Upload preparation omits internal bucket/path values; signed download URLs are included only after an explicit `download_url` request and retain their expiry.
+
+The test-only caller harness uses synthetic service envelopes and an in-memory fixture store. Production callers must supply their existing durable atomic store; the fixture store is not a production persistence implementation. These tests do not prove caller RLS, provider isolation, media-service path enforcement, or end-to-end rendering.
+
 ## Integration handoff
 
 | Area | Reused / caller work / verification |
@@ -104,6 +118,8 @@ The minimum customer result card should show:
 | Workers | Reuse `api/video-worker.mjs` for its declared `image_poster` cloud capability with local fallback, and `worker/video_agent_worker.mjs` / local tools for existing local rendering. Do **not** describe all video rendering as cloud-hosted. |
 | Ads Employee caller | Supply verified actor/tenant/project binding, existing server-side endpoint/credential transport, durable transactional persistence hooks, approved brief/task/campaign references, and the actual authorised upload mechanism. |
 | This draft does not verify | Live endpoint/auth compatibility, caller database atomicity, production two-tenant isolation, worker online/heartbeat behavior, real uploaded assets, generated output metadata, or signed-URL behavior in deployment. No production records or network were used in tests. |
+| A3 source-contract gaps | Service-level token is not tenant authorization; caller-to-media tenant/project mapping and source-side enforcement remain release blockers. The contract calls for job-level `init_job` idempotency, checksum/metadata, and tenant/project/job-scoped signed paths; this adapter cannot claim those source capabilities are present or enforced. |
+| A3 runtime gates | Consumer chat/event wiring, caller RLS/durable store, two-tenant canary, real asset lineage, worker/render/download checks, and ad approval handoff remain **NOT_RUN**. Keep the integration feature off by default until separately approved. |
 
 ### Readiness checklist (not yet executed)
 

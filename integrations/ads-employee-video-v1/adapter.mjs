@@ -259,6 +259,7 @@ export function createAdsEmployeeVideoAdapter({
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now = () => Date.now(),
   createId = randomUUID,
+  validateBriefReferences,
 }) {
   if (![authorize, resolveBinding, transport].every((value) => typeof value === 'function')) {
     throw new TypeError('authorize, resolveBinding and transport are required');
@@ -450,6 +451,22 @@ export function createAdsEmployeeVideoAdapter({
       const canonicalTaskId = text(taskId, 'task_id', 200);
       const { snapshot, mediaBrief } = briefSnapshot(input, canonicalTaskId, selectedMode);
       const projectName = text(input.projectName, 'project_name', 200);
+      if (validateBriefReferences) {
+        let referencesAllowed = false;
+        try {
+          referencesAllowed = await validateBriefReferences({
+            actorId: context.actorId,
+            role: context.role,
+            tenantId: scope.tenantId,
+            projectRef: scope.projectRef,
+            videoProjectId: scope.videoProjectId,
+            taskId: canonicalTaskId,
+            materialVersionRef: snapshot.materialVersionRef,
+            referenceAssets: [...snapshot.referenceAssets],
+          }) === true;
+        } catch {}
+        if (!referencesAllowed) fail(403, 'private_references_not_authorized');
+      }
       const createPayload = { projectName, mode: selectedMode, snapshot };
       const jobRefForCreate = createId();
       if (typeof persistence.saveSnapshot !== 'function') fail(503, 'snapshot_store_unavailable');
