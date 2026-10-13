@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
+import { resolveVoiceover } from './_cloud-tts.mjs';
 import sharp from 'sharp';
 
 const WIDTH = 720;
@@ -137,9 +138,12 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await mkdir(workdir, { recursive: true });
   const visual = selectSceneSources(downloadedInputs);
   if (!visual.length) throw new Error('missing_visual_input');
-  const voice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
+  const uploadedVoice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = downloadedInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   const scenes = copyFor(job);
+  const { voice, voiceSource, voiceError } = await resolveVoiceover({
+    uploadedVoice, job, scenes, outputPath: path.join(workdir, 'voiceover-tts.mp3'),
+  });
   const segments = [];
   for (let index = 0; index < scenes.length; index += 1) {
     const source = visual[index] || visual[index % visual.length];
@@ -157,5 +161,8 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const finalPath = path.join(workdir, 'final-cloud.mp4');
   const result = await mixAudio(assembled, voice, bgm, finalPath);
   await onProgress(90, '云端成片已生成，正在质检与回传');
-  return { data: await readFile(result), durationSeconds: scenes.length * SEGMENT_SECONDS, width: WIDTH, height: HEIGHT };
+  return {
+    data: await readFile(result), durationSeconds: scenes.length * SEGMENT_SECONDS, width: WIDTH, height: HEIGHT,
+    voiceSource, voiceError,
+  };
 }
