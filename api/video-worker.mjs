@@ -2,10 +2,11 @@ import crypto from 'node:crypto';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { renderCloudVideo } from './_cloud-video.mjs';
 
 export const config = { maxDuration: 300 };
 
-const WORKER = 'VERCEL-POSTER-V1';
+const WORKER = 'VERCEL-CREATIVE-V2';
 const INPUT_BUCKET = 'video-agent-inputs';
 const RESULT_BUCKET = 'video-agent-results';
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
@@ -50,6 +51,14 @@ async function download(bucket, objectPath) {
   });
   if (!response.ok) throw new Error(`download_${response.status}_${(await response.text()).slice(0, 300)}`);
   return Buffer.from(await response.arrayBuffer());
+}
+
+async function downloadToTmp(item, index, jobId) {
+  const extension = path.extname(String(item.name || item.path || '')) || (String(item.type || '').startsWith('video/') ? '.mp4' : String(item.type || '').startsWith('audio/') ? '.mp3' : '.jpg');
+  const localPath = path.join('/tmp', `video-${jobId}`, `input-${index}${extension}`);
+  await mkdir(path.dirname(localPath), { recursive: true });
+  await writeFile(localPath, await download(INPUT_BUCKET, item.path));
+  return { ...item, localPath };
 }
 
 async function upload(bucket, objectPath, data, contentType) {
@@ -148,17 +157,33 @@ async function runOne(accessCode) {
     const inputs = Array.isArray(job.input_files) ? job.input_files : [];
     const main = inputs.find((item) => item.role === 'main') || inputs[0];
     if (!main?.path) throw new Error('missing_main_visual');
-    if (String(main.type || '').startsWith('video/')) throw new Error('video_poster_source_requires_local_ffmpeg');
-    await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
-    const source = await download(INPUT_BUCKET, main.path);
-    await heartbeat(accessCode, job.id, '云端正在生成商业海报', 52);
-    const result = await renderPoster(job, source);
-    await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 92);
-    const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: 'poster-cloud.jpg' });
-    await upload(RESULT_BUCKET, dest, result, 'image/jpeg');
+    let result;
+    let fileName;
+    let contentType;
+    if (job.workflow_mode === 'image_poster') {
+      if (String(main.type || '').startsWith('video/')) throw new Error('video_poster_source_requires_local_ffmpeg');
+      await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
+      const source = await download(INPUT_BUCKET, main.path);
+      await heartbeat(accessCode, job.id, '云端正在生成商业海报', 52);
+      result = await renderPoster(job, source);
+      fileName = 'poster-cloud.jpg';
+      contentType = 'image/jpeg';
+    } else {
+      await heartbeat(accessCode, job.id, '云端正在下载项目隔离素材', 14);
+      const downloaded = [];
+      for (let index = 0; index < inputs.length; index += 1) downloaded.push(await downloadToTmp(inputs[index], index, job.id));
+      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress));
+      result = rendered.data;
+      fileName = 'creative-cloud.mp4';
+      contentType = 'video/mp4';
+    }
+    await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 94);
+    const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: fileName });
+    await upload(RESULT_BUCKET, dest, result, contentType);
     await rpc('video_agent_worker_update', {
       p_access: accessCode, p_job_id: job.id, p_status: 'completed', p_progress: 100,
-      p_stage: '云端已完成，可查看海报', p_output_files: [{ name: 'poster-cloud.jpg', path: dest, type: 'image/jpeg' }], p_error_message: null,
+      p_stage: job.workflow_mode === 'image_poster' ? '云端已完成，可查看海报' : '云端已完成，可查看成片',
+      p_output_files: [{ name: fileName, path: dest, type: contentType }], p_error_message: null,
     });
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };
   } catch (error) {
@@ -169,7 +194,7 @@ async function runOne(accessCode) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster'], mode: 'cloud_with_local_fallback' });
+  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], mode: 'cloud_canary_with_local_fallback' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });
