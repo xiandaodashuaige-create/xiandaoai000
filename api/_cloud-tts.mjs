@@ -1,5 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import { isEnglishJob, voiceRulesFor } from './_cloud-industry.mjs';
+
+export { isEnglishJob };
 
 // Same voices and rates as the local worker (worker/video_agent_worker.mjs).
 export const VOICES = {
@@ -9,19 +12,18 @@ export const VOICES = {
 const MIN_AUDIO_BYTES = 1024;
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-export function isEnglishJob(job) {
-  return /^en/i.test(String(job?.language || job?.locale || ''));
-}
-
+// Same voice and rate rules as the local worker, including the male/female
+// Cantonese switch requested through the revision prompt.
 export function voiceFor(job) {
-  return isEnglishJob(job) ? VOICES.english : VOICES.chinese;
+  const { english, voice, rate } = voiceRulesFor(job);
+  return { voice, rate, language: english ? 'en-US' : 'zh-HK' };
 }
 
 // Scene copy is joined into one short narration. Characters that could
 // break SSML are removed; the narration is plain text only.
 export function narrationFor(scenes) {
   return scenes
-    .flatMap((scene) => [scene.title, scene.subtitle])
+    .flatMap((scene) => (scene.vo ? [scene.vo] : [scene.title, scene.subtitle]))
     .filter((line) => typeof line === 'string' && line.trim())
     .map((line) => line.replace(/[<>&"'`]/g, ' ').trim())
     .join('。');

@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
-import { resolveVoiceover } from './_cloud-tts.mjs';
+import { resolveVoiceover, isEnglishJob } from './_cloud-tts.mjs';
+import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
 import sharp from 'sharp';
 
 const WIDTH = 720;
@@ -33,26 +34,21 @@ async function sourceHasAudio(file) {
   }
 }
 
-function field(brief, label, fallback = '') {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = String(brief || '').match(new RegExp(`${escaped}[：:]([^\\n]+)`));
-  return match?.[1]?.trim() || fallback;
+// Industry copy and the five-beat storyboard come from _cloud-industry.mjs,
+// ported from the local worker. An explicit hook or CTA written in the brief
+// is kept as the first or last beat title, so operator wording is not lost.
+function briefBlock(brief, pattern) {
+  return String(brief || '').match(pattern)?.[1]?.trim() || '';
 }
 
 function copyFor(job) {
   const brief = String(job.brief || '').replaceAll('\\n', '\n');
-  const business = field(brief, '业务主题', field(brief, '业务类型', job.project_name || '真实服务'));
-  const facts = field(brief, '准确事实', field(brief, '准确价格/优惠/事实', '真实现场 · 真实过程'));
-  const action = field(brief, '客户行动', field(brief, '行动引导', '立即了解详情'));
-  const hookBlock = brief.match(/1\. AI生成开头 Hook[：:]([^\n]+)/)?.[1]?.trim();
-  const ctaBlock = brief.match(/3\. AI生成结尾 CTA[：:]([^\n]+)/)?.[1]?.trim();
-  return [
-    { kicker: '先别划走', title: hookBlock || business, subtitle: '这一次，看真实过程' },
-    { kicker: '真实案例', title: business, subtitle: '现场画面 · 不是空口介绍' },
-    { kicker: '过程证据', title: '真实体验与实际操作', subtitle: facts },
-    { kicker: '为什么值得来', title: facts, subtitle: '画面与信息逐项对应' },
-    { kicker: '现在行动', title: ctaBlock || action, subtitle: `${facts}  ·  ${action}` },
-  ];
+  const scenes = isEnglishJob(job) ? englishStoryboard(job) : industryStoryboard(job);
+  const hook = briefBlock(brief, /1\. AI生成开头 Hook[：:]([^\n]+)/);
+  const cta = briefBlock(brief, /3\. AI生成结尾 CTA[：:]([^\n]+)/);
+  if (hook) scenes[0] = { ...scenes[0], title: hook };
+  if (cta) scenes[scenes.length - 1] = { ...scenes[scenes.length - 1], title: cta };
+  return scenes;
 }
 
 export function selectSceneSources(inputs) {
@@ -92,7 +88,7 @@ async function overlayPng(scene, output) {
   const [kicker, title, subtitle] = await Promise.all([
     textImage(scene.kicker, fontFile, 180, 25, '#002414', 700),
     textImage(scene.title, fontFile, 624, 58, '#ffffff', 800),
-    textImage(scene.subtitle, fontFile, 624, 28, '#e1f7ec', 500),
+    textImage(scene.showSubtitle === false ? '' : scene.subtitle, fontFile, 624, 28, '#e1f7ec', 500),
   ]);
   const titleMeta = await sharp(title).metadata();
   const titleTop = Math.max(800, 1055 - Number(titleMeta.height || 140));
@@ -150,7 +146,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
-    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment });
+    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: scenes[index].seconds ?? SEGMENT_SECONDS });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }
@@ -162,7 +158,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const result = await mixAudio(assembled, voice, bgm, finalPath);
   await onProgress(90, '云端成片已生成，正在质检与回传');
   return {
-    data: await readFile(result), durationSeconds: scenes.length * SEGMENT_SECONDS, width: WIDTH, height: HEIGHT,
+    data: await readFile(result), durationSeconds: scenes.reduce((sum, scene) => sum + (scene.seconds ?? SEGMENT_SECONDS), 0), width: WIDTH, height: HEIGHT,
     voiceSource, voiceError,
   };
 }
