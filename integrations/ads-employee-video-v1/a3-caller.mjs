@@ -90,25 +90,9 @@ export function createA3VideoCaller({ validatePrivateReferences, ...adapterOptio
     throw new TypeError('validatePrivateReferences is required');
   }
 
-  const handleAdapter = createAdsEmployeeVideoAdapter({
+  return createAdsEmployeeVideoAdapter({
     ...adapterOptions,
     validateBriefReferences: validatePrivateReferences,
+    projectResult: projectOperationResult,
   });
-
-  return async function handleA3Request(request) {
-    const response = await handleAdapter(request);
-    if (!response.body?.ok) {
-      return {
-        status: response.status,
-        body: { ok: false, error: response.body?.error || 'integration_error' },
-      };
-    }
-    return {
-      status: response.status,
-      body: {
-        ok: true,
-        result: projectOperationResult(request.body?.operation, response.body.result),
-      },
-    };
-  };
 }

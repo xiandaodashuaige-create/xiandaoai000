@@ -357,3 +357,23 @@ test('completed service state without a manifest projects to needs-input, never 
   assert.deepEqual(result.eventTypes, ['NEEDS_INPUT']);
   assert.deepEqual(result.assets, []);
 });
+
+test('A3 projection preserves the parsed operation for string and stream request bodies', async () => {
+  for (const bodyType of ['string', 'stream']) {
+    const h = callerHarness();
+    const request = syntheticA3CreateRequest();
+    const serialized = JSON.stringify(request.body);
+    request.body = bodyType === 'string'
+      ? serialized
+      : new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(serialized));
+          controller.close();
+        },
+      });
+    const response = await h.handler(request);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.result.product, 'A3');
+    assert.equal(response.body.result.taskRef, 'caller-task-synthetic-17');
+  }
+});

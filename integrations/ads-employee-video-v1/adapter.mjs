@@ -260,9 +260,13 @@ export function createAdsEmployeeVideoAdapter({
   now = () => Date.now(),
   createId = randomUUID,
   validateBriefReferences,
+  projectResult,
 }) {
   if (![authorize, resolveBinding, transport].every((value) => typeof value === 'function')) {
     throw new TypeError('authorize, resolveBinding and transport are required');
+  }
+  if (projectResult !== undefined && typeof projectResult !== 'function') {
+    throw new TypeError('projectResult must be a function');
   }
   if (!persistence || typeof persistence.reserveOperation !== 'function'
     || typeof persistence.completeOperation !== 'function'
@@ -422,7 +426,7 @@ export function createAdsEmployeeVideoAdapter({
     };
   }
 
-  async function handleRequest(request) {
+  async function handleRequest(request, setOperation) {
     const origin = header(request, 'origin');
     let validOrigin = false;
     try {
@@ -434,6 +438,7 @@ export function createAdsEmployeeVideoAdapter({
     if (!requestBody || typeof requestBody !== 'object' || Array.isArray(requestBody)) fail(400, 'invalid_request');
     if (Buffer.byteLength(JSON.stringify(requestBody)) > MAX_REQUEST_BYTES) fail(413, 'request_too_large');
     const { operation, projectRef, idempotencyKey, jobRef, taskId, input = {} } = requestBody;
+    setOperation(operation);
     if (!ACTIONS.has(operation)) fail(400, 'operation_not_allowed');
     text(projectRef, 'project_ref', 200);
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail(400, 'invalid_input');
@@ -678,7 +683,12 @@ export function createAdsEmployeeVideoAdapter({
 
   return async function handle(request) {
     try {
-      return { status: 200, body: { ok: true, result: await handleRequest(request) } };
+      let operation;
+      const result = await handleRequest(request, (value) => { operation = value; });
+      return {
+        status: 200,
+        body: { ok: true, result: projectResult ? projectResult(operation, result) : result },
+      };
     } catch (error) {
       const known = error instanceof AdapterError ? error : new AdapterError(500, 'integration_error');
       return { status: known.status, body: { ok: false, error: known.code } };
