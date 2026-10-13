@@ -6,8 +6,14 @@ import { resolveVoiceover, isEnglishJob } from './_cloud-tts.mjs';
 import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
 import sharp from 'sharp';
 
-const WIDTH = 720;
-const HEIGHT = 1280;
+// Output is 1080x1920 to match the local worker. Overlay layout is authored
+// at 720 and scaled by K so both paths keep the same proportions.
+const WIDTH = 1080;
+const HEIGHT = 1920;
+const K = WIDTH / 720;
+const px = (value) => Math.round(value * K);
+// Social-platform loudness target; the final pass normalises every render to it.
+const LOUDNESS = { I: -14, TP: -1.5, LRA: 11 };
 const FPS = 25;
 const SEGMENT_SECONDS = 5;
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
@@ -83,19 +89,19 @@ async function overlayPng(scene, output) {
   const svg = Buffer.from(`<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00130b" stop-opacity=".2"/><stop offset=".55" stop-color="#00130b" stop-opacity="0"/><stop offset="1" stop-color="#00130b" stop-opacity=".88"/></linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#shade)"/>
-    <rect x="48" y="72" width="220" height="54" rx="27" fill="#21d17d"/>
+    <rect x="${px(48)}" y="${px(72)}" width="${px(220)}" height="${px(54)}" rx="${px(27)}" fill="#21d17d"/>
   </svg>`);
   const [kicker, title, subtitle] = await Promise.all([
-    textImage(scene.kicker, fontFile, 180, 25, '#002414', 700),
-    textImage(scene.title, fontFile, 624, 58, '#ffffff', 800),
-    textImage(scene.showSubtitle === false ? '' : scene.subtitle, fontFile, 624, 28, '#e1f7ec', 500),
+    textImage(scene.kicker, fontFile, px(180), px(25), '#002414', 700),
+    textImage(scene.title, fontFile, px(624), px(58), '#ffffff', 800),
+    textImage(scene.showSubtitle === false ? '' : scene.subtitle, fontFile, px(624), px(28), '#e1f7ec', 500),
   ]);
   const titleMeta = await sharp(title).metadata();
-  const titleTop = Math.max(800, 1055 - Number(titleMeta.height || 140));
+  const titleTop = Math.max(px(800), px(1055) - Number(titleMeta.height || px(140)));
   await sharp(svg).composite([
-    { input: kicker, top: 84, left: 68 },
-    { input: title, top: titleTop, left: 48 },
-    { input: subtitle, top: 1100, left: 48 },
+    { input: kicker, top: px(84), left: px(68) },
+    { input: title, top: titleTop, left: px(48) },
+    { input: subtitle, top: px(1100), left: px(48) },
   ]).png().toFile(output);
 }
 
@@ -128,6 +134,13 @@ async function mixAudio(video, voice, bgm, output) {
   return output;
 }
 
+async function normalizeLoudness(input, output) {
+  await run(['-y', '-i', input, '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
+    '-af', `loudnorm=I=${LOUDNESS.I}:TP=${LOUDNESS.TP}:LRA=${LOUDNESS.LRA}`,
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', output], path.dirname(output));
+  return output;
+}
+
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}) {
   const workdir = path.join('/tmp', `video-${job.id}`);
   await rm(workdir, { recursive: true, force: true });
@@ -155,7 +168,8 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const assembled = path.join(workdir, 'assembled.mp4');
   await run(['-y', '-f', 'concat', '-safe', '0', '-i', concat, '-c', 'copy', '-movflags', '+faststart', assembled], workdir);
   const finalPath = path.join(workdir, 'final-cloud.mp4');
-  const result = await mixAudio(assembled, voice, bgm, finalPath);
+  const mixed = await mixAudio(assembled, voice, bgm, path.join(workdir, 'mixed.mp4'));
+  const result = await normalizeLoudness(mixed, finalPath);
   await onProgress(90, '云端成片已生成，正在质检与回传');
   return {
     data: await readFile(result), durationSeconds: scenes.reduce((sum, scene) => sum + (scene.seconds ?? SEGMENT_SECONDS), 0), width: WIDTH, height: HEIGHT,
