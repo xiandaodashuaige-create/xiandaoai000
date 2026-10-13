@@ -1,0 +1,78 @@
+import { writeFile } from 'node:fs/promises';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+
+// Same voices and rates as the local worker (worker/video_agent_worker.mjs).
+export const VOICES = {
+  english: { voice: 'en-US-JennyNeural', rate: '+8%', language: 'en-US' },
+  chinese: { voice: 'zh-HK-HiuMaanNeural', rate: '+4%', language: 'zh-HK' },
+};
+const MIN_AUDIO_BYTES = 1024;
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+export function isEnglishJob(job) {
+  return /^en/i.test(String(job?.language || job?.locale || ''));
+}
+
+export function voiceFor(job) {
+  return isEnglishJob(job) ? VOICES.english : VOICES.chinese;
+}
+
+// Scene copy is joined into one short narration. Characters that could
+// break SSML are removed; the narration is plain text only.
+export function narrationFor(scenes) {
+  return scenes
+    .flatMap((scene) => [scene.title, scene.subtitle])
+    .filter((line) => typeof line === 'string' && line.trim())
+    .map((line) => line.replace(/[<>&"'`]/g, ' ').trim())
+    .join('。');
+}
+
+async function defaultSynthesize({ text, voice, rate }) {
+  const tts = new MsEdgeTTS();
+  await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+  const { audioStream } = tts.toStream(text, { rate });
+  const chunks = [];
+  for await (const chunk of audioStream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+// Never throws. A failed or empty synthesis returns { ok: false, reason }
+// so the caller can render without voice and say so, instead of claiming one.
+export async function synthesizeVoiceover({
+  text, voice, rate, outputPath,
+  synthesize = defaultSynthesize,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}) {
+  if (!text || !text.trim()) return { ok: false, reason: 'empty_narration' };
+  let timer;
+  try {
+    const audio = await Promise.race([
+      synthesize({ text, voice, rate }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('tts_timeout')), timeoutMs);
+      }),
+    ]);
+    if (!audio || audio.length < MIN_AUDIO_BYTES) {
+      return { ok: false, reason: 'tts_empty_audio' };
+    }
+    await writeFile(outputPath, audio);
+    return { ok: true, path: outputPath, bytes: audio.length };
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error).slice(0, 120) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Uploaded voiceover always wins. Only when none was uploaded do we
+// synthesize, and the result says which source was used.
+export async function resolveVoiceover({ uploadedVoice, job, scenes, outputPath, synthesize, timeoutMs }) {
+  if (uploadedVoice) return { voice: uploadedVoice, voiceSource: 'uploaded', voiceError: null };
+  const { voice, rate } = voiceFor(job);
+  const result = await synthesizeVoiceover({
+    text: narrationFor(scenes), voice, rate, outputPath, synthesize, timeoutMs,
+  });
+  return result.ok
+    ? { voice: result.path, voiceSource: 'tts', voiceError: null }
+    : { voice: null, voiceSource: 'none', voiceError: result.reason };
+}
