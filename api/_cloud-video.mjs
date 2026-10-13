@@ -54,6 +54,18 @@ function copyFor(job) {
   ];
 }
 
+export function selectSceneSources(inputs) {
+  const visuals = inputs.filter((item) => /^(video|image)\//.test(String(item.type || '')) && item.role !== 'reference' && item.role !== 'character_reference');
+  const byRole = (role) => visuals.filter((item) => item.role === role);
+  const generated = byRole('ai_generated');
+  const hook = [...byRole('ai_hook'), ...generated, ...byRole('asset'), ...byRole('main')];
+  const proof = [...byRole('main'), ...byRole('case_proof'), ...byRole('asset')];
+  const cta = [...byRole('ai_cta'), ...generated.slice(1), ...generated, ...byRole('asset'), ...byRole('main')];
+  if (!visuals.length) return [];
+  const pick = (pool, index = 0) => pool[index % Math.max(1, pool.length)] || visuals[index % visuals.length];
+  return [pick(hook), pick(proof, 0), pick(proof, 1), pick(proof, 2), pick(cta)].filter(Boolean);
+}
+
 async function ensureFont() {
   try { await access(FONT_PATH); return FONT_PATH; } catch {}
   const response = await fetch(FONT_URL);
@@ -122,14 +134,14 @@ async function mixAudio(video, voice, bgm, output) {
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}) {
   const workdir = path.join('/tmp', `video-${job.id}`);
   await mkdir(workdir, { recursive: true });
-  const visual = downloadedInputs.filter((item) => /^(video|image)\//.test(String(item.type || '')) && item.role !== 'reference');
+  const visual = selectSceneSources(downloadedInputs);
   if (!visual.length) throw new Error('missing_visual_input');
   const voice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = downloadedInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   const scenes = copyFor(job);
   const segments = [];
   for (let index = 0; index < scenes.length; index += 1) {
-    const source = visual[index % visual.length];
+    const source = visual[index] || visual[index % visual.length];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
