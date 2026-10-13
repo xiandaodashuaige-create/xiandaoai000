@@ -152,7 +152,7 @@ export async function overlayPng(scene, output) {
   await sharp(svg).composite(layers).png().toFile(output);
 }
 
-async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS }) {
+export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS }) {
   const isImage = String(type || '').startsWith('image/');
   const hasAudio = !isImage && await sourceHasAudio(source);
   const input = isImage ? ['-loop', '1', '-framerate', String(FPS), '-i', source] : ['-i', source];
