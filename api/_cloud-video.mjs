@@ -84,25 +84,72 @@ function textImage(text, fontFile, width, fontSize, color, weight = 700) {
     .toBuffer();
 }
 
-async function overlayPng(scene, output) {
+// Overlay coordinates are authored on a 720x1280 grid and scaled with px().
+// Templates follow the local worker: big text hook, pain cards, WhatsApp
+// chat bubbles, and a CTA button.
+export async function overlayPng(scene, output) {
   const fontFile = await ensureFont();
+  const template = scene.template || 'big_text_hook';
+  const shapes = [];
+  const composites = [];
+  const pad = px(26);
+  const text = async (value, width, size, color, weight) => {
+    if (!value) return null;
+    const image = await textImage(value, fontFile, width, size, color, weight);
+    const meta = await sharp(image).metadata();
+    return { image, width: meta.width || 0, height: meta.height || 0 };
+  };
+  const rect = (x, y, w, h, rx, fill, extra = '') =>
+    shapes.push(`<rect x="${px(x)}" y="${px(y)}" width="${px(w)}" height="${px(h)}" rx="${px(rx)}" fill="${fill}" ${extra}/>`);
+
+  let y = 0;
+  if (template === 'pain_cards') {
+    y = px(470);
+    for (const card of scene.cards || []) {
+      const t = await text(card, px(560), px(34), '#ffffff', 700);
+      if (!t) continue;
+      const h = t.height + pad * 2;
+      rect(48, y / K, 624, h / K, 22, '#ffffff', 'fill-opacity=".14" stroke="#21d17d" stroke-width="' + px(3) + '"');
+      composites.push({ input: t.image, top: y + pad, left: px(48) + pad });
+      y += h + px(24);
+    }
+  }
+  if (template === 'whatsapp_chat') {
+    y = px(470);
+    for (const [index, message] of (scene.messages || []).entries()) {
+      const t = await text(message, px(440), px(30), index % 2 ? '#00130b' : '#0b1f16', 500);
+      if (!t) continue;
+      const w = t.width + pad * 2;
+      const h = t.height + pad * 2;
+      const left = index % 2 ? WIDTH - px(48) - w : px(48);
+      shapes.push(`<rect x="${left}" y="${y}" width="${w}" height="${h}" rx="${px(24)}" fill="${index % 2 ? '#25d366' : '#ffffff'}"/>`);
+      composites.push({ input: t.image, top: y + pad, left: left + pad });
+      y += h + px(22);
+    }
+  }
+  if (template === 'cta_offer' && scene.button) {
+    const label = await text(scene.button, px(560), px(34), '#00130b', 800);
+    if (label) {
+      const h = px(84);
+      shapes.push(`<rect x="${px(48)}" y="${px(1190)}" width="${px(624)}" height="${h}" rx="${px(42)}" fill="#21d17d"/>`);
+      composites.push({ input: label.image, top: px(1190) + Math.round((h - label.height) / 2), left: px(48) + px(36) });
+    }
+  }
+
   const svg = Buffer.from(`<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00130b" stop-opacity=".2"/><stop offset=".55" stop-color="#00130b" stop-opacity="0"/><stop offset="1" stop-color="#00130b" stop-opacity=".88"/></linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#shade)"/>
     <rect x="${px(48)}" y="${px(72)}" width="${px(220)}" height="${px(54)}" rx="${px(27)}" fill="#21d17d"/>
+    ${shapes.join('\n')}
   </svg>`);
-  const [kicker, title, subtitle] = await Promise.all([
-    textImage(scene.kicker, fontFile, px(180), px(25), '#002414', 700),
-    textImage(scene.title, fontFile, px(624), px(58), '#ffffff', 800),
-    textImage(scene.showSubtitle === false ? '' : scene.subtitle, fontFile, px(624), px(28), '#e1f7ec', 500),
-  ]);
-  const titleMeta = await sharp(title).metadata();
-  const titleTop = Math.max(px(800), px(1055) - Number(titleMeta.height || px(140)));
-  await sharp(svg).composite([
-    { input: kicker, top: px(84), left: px(68) },
-    { input: title, top: titleTop, left: px(48) },
-    { input: subtitle, top: px(1100), left: px(48) },
-  ]).png().toFile(output);
+  const kicker = await text(scene.kicker, px(180), px(25), '#002414', 700);
+  const title = await text(scene.title, px(624), px(58), '#ffffff', 800);
+  const subtitle = scene.showSubtitle === false ? null : await text(scene.subtitle, px(624), px(28), '#e1f7ec', 500);
+  const layers = [...composites];
+  if (kicker) layers.push({ input: kicker.image, top: px(84), left: px(68) });
+  if (title) layers.push({ input: title.image, top: Math.max(px(800), px(1055) - title.height), left: px(48) });
+  if (subtitle) layers.push({ input: subtitle.image, top: px(1100), left: px(48) });
+  await sharp(svg).composite(layers).png().toFile(output);
 }
 
 async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS }) {
@@ -134,7 +181,7 @@ async function mixAudio(video, voice, bgm, output) {
   return output;
 }
 
-async function normalizeLoudness(input, output) {
+export async function normalizeLoudness(input, output) {
   await run(['-y', '-i', input, '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
     '-af', `loudnorm=I=${LOUDNESS.I}:TP=${LOUDNESS.TP}:LRA=${LOUDNESS.LRA}`,
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', output], path.dirname(output));

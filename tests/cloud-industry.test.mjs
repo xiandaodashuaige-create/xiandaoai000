@@ -37,7 +37,11 @@ test('storyboard has five beats with the local worker timings', () => {
   const scenes = industryStoryboard(brief('業務主題：肩頸按摩'));
   assert.equal(scenes.length, 5);
   assert.deepEqual(scenes.map((scene) => scene.seconds), [3, 5, 6, 6, 5]);
-  assert.ok(scenes.every((scene) => scene.vo && scene.title));
+  assert.ok(scenes.every((scene) => scene.vo));
+  assert.deepEqual(scenes.map((scene) => scene.template), ['big_text_hook', 'pain_cards', 'big_text_hook', 'whatsapp_chat', 'cta_offer']);
+  assert.equal(scenes[1].cards.length, 3);
+  assert.equal(scenes[3].messages.length, 2);
+  assert.equal(scenes[4].button, 'WhatsApp 預約');
 });
 
 test('pace revision shortens the storyboard as the local worker does', () => {
@@ -47,6 +51,7 @@ test('pace revision shortens the storyboard as the local worker does', () => {
 
 test('ad service uses the advertising beat sequence', () => {
   const scenes = industryStoryboard(brief('業務主題：AI廣告代投'));
+  assert.equal(scenes[4].button, 'WhatsApp 了解');
   assert.equal(scenes[2].kicker, '廣告投放');
   assert.match(scenes[2].vo, /鹿聯AI廣告員工/);
 });

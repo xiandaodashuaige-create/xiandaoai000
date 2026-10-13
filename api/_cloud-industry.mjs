@@ -173,21 +173,19 @@ export function industryStoryboard(job) {
   const seconds = flags.faster ? [2.6, 4.0, 4.8, 4.5, 4.0] : [3, 5, 6, 6, 5];
   const showSubtitles = !flags.reduceSubs;
 
-  const beats = intent === 'ad_service'
-    ? [
-      { kicker: '先別划走', title: copy.hook[0], subtitle: copy.hook[1], vo: copy.hook[1] },
-      { kicker: '痛點', title: copy.cards[0], subtitle: copy.cards.slice(1).join('  ·  '), vo: '好多時問題唔係服務，而係客人未睇明你做咩、唔知你喺邊區、亦唔知點預約。' },
-      { kicker: '廣告投放', title: copy.middleText, subtitle: copy.middleVo, vo: copy.middleVo },
-      { kicker: 'WhatsApp', title: copy.msgs[0], subtitle: copy.chatVo, vo: copy.chatVo },
-      { kicker: '現在行動', title: copy.ctaText, subtitle: copy.ctaVo, vo: copy.ctaVo },
-    ]
-    : [
-      { kicker: '先別划走', title: copy.hook[0], subtitle: copy.hook[1], vo: copy.hook[1] },
-      { kicker: '痛點', title: copy.cards[0], subtitle: copy.cards.slice(1).join('  ·  '), vo: copy.cards.join('、') + '。' },
-      { kicker: '真實過程', title: copy.middleText, subtitle: copy.middleVo, vo: copy.middleVo },
-      { kicker: 'WhatsApp', title: copy.msgs[0], subtitle: copy.chatVo, vo: copy.chatVo },
-      { kicker: '現在行動', title: copy.ctaText, subtitle: copy.ctaVo, vo: copy.ctaVo },
-    ];
+  const hook = { template: 'big_text_hook', kicker: '先別划走', title: copy.hook[0], subtitle: copy.hook[1], vo: copy.hook[1] };
+  const pain = {
+    template: 'pain_cards', kicker: '痛點', cards: copy.cards, title: '', subtitle: '',
+    vo: intent === 'ad_service'
+      ? '好多時問題唔係服務，而係客人未睇明你做咩、唔知你喺邊區、亦唔知點預約。'
+      : copy.cards.join('、') + '。',
+  };
+  const middle = intent === 'ad_service'
+    ? { template: 'big_text_hook', kicker: '廣告投放', title: copy.middleText, subtitle: copy.middleVo, vo: copy.middleVo }
+    : { template: 'big_text_hook', kicker: '真實過程', title: copy.middleText, subtitle: copy.middleVo, vo: copy.middleVo };
+  const chat = { template: 'whatsapp_chat', kicker: 'WhatsApp', messages: copy.msgs, title: '', subtitle: copy.chatVo, vo: copy.chatVo };
+  const cta = { template: 'cta_offer', kicker: '現在行動', title: copy.ctaText, button: intent === 'ad_service' ? 'WhatsApp 了解' : 'WhatsApp 預約', subtitle: copy.ctaVo, vo: copy.ctaVo };
+  const beats = [hook, pain, middle, chat, cta];
 
   return beats.map((beat, index) => ({
     ...beat,
