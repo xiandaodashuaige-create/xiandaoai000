@@ -160,6 +160,7 @@ async function runOne(accessCode) {
     let result;
     let fileName;
     let contentType;
+    let artifactMeta = {};
     if (job.workflow_mode === 'image_poster') {
       if (String(main.type || '').startsWith('video/')) throw new Error('video_poster_source_requires_local_ffmpeg');
       await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
@@ -176,14 +177,19 @@ async function runOne(accessCode) {
       result = rendered.data;
       fileName = 'creative-cloud.mp4';
       contentType = 'video/mp4';
+      artifactMeta = { duration_seconds: rendered.durationSeconds, width: rendered.width, height: rendered.height };
     }
     await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 94);
     const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: fileName });
     await upload(RESULT_BUCKET, dest, result, contentType);
+    const sha256 = crypto.createHash('sha256').update(result).digest('hex');
+    await rpc('video_agent_worker_set_artifact_metadata', {
+      p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER, p_output_sha256: sha256,
+    });
     await rpc('video_agent_worker_update', {
       p_access: accessCode, p_job_id: job.id, p_status: 'completed', p_progress: 100,
       p_stage: job.workflow_mode === 'image_poster' ? '云端已完成，可查看海报' : '云端已完成，可查看成片',
-      p_output_files: [{ name: fileName, path: dest, type: contentType }], p_error_message: null,
+      p_output_files: [{ name: fileName, path: dest, type: contentType, sha256, ...artifactMeta }], p_error_message: null,
     });
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };
   } catch (error) {
