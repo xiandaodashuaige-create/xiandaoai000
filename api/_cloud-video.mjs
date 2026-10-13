@@ -39,7 +39,7 @@ function field(brief, label, fallback = '') {
 }
 
 function copyFor(job) {
-  const brief = String(job.brief || '');
+  const brief = String(job.brief || '').replaceAll('\\n', '\n');
   const business = field(brief, '业务主题', field(brief, '业务类型', job.project_name || '真实服务'));
   const facts = field(brief, '准确事实', field(brief, '准确价格/优惠/事实', '真实现场 · 真实过程'));
   const action = field(brief, '客户行动', field(brief, '行动引导', '立即了解详情'));
