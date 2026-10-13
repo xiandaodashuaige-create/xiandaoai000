@@ -160,7 +160,20 @@ Deno.serve(async (req: Request) => {
         p_access: access, p_job_id: jobId, p_bucket: INPUT_BUCKET, p_file_name: String(body.file_name || "file"),
       });
       if (error) return json({ error: errMsg(error) }, 500);
-      return json({ ok: true, bucket: INPUT_BUCKET, path: data, content_type: String(body.content_type || "application/octet-stream") });
+      const { data: signedUpload, error: signedUploadError } = await sb.storage
+        .from(INPUT_BUCKET)
+        .createSignedUploadUrl(String(data));
+      if (signedUploadError || !signedUpload?.token) {
+        return json({ error: errMsg(signedUploadError) }, 500);
+      }
+      return json({
+        ok: true,
+        bucket: INPUT_BUCKET,
+        path: data,
+        token: signedUpload.token,
+        signed_url: signedUpload.signedUrl,
+        content_type: String(body.content_type || "application/octet-stream"),
+      });
     }
 
     if (action === "provider_submit_job") {
@@ -320,7 +333,20 @@ Deno.serve(async (req: Request) => {
         p_file_name: String(body.file_name || (bucket === RESULT_BUCKET ? "result.mp4" : "file")),
       });
       if (error) return json({ error: errMsg(error) }, 500);
-      return json({ ok: true, bucket, path: data, content_type: String(body.content_type || "application/octet-stream") });
+      const { data: signedUpload, error: signedUploadError } = await sb.storage
+        .from(bucket)
+        .createSignedUploadUrl(String(data));
+      if (signedUploadError || !signedUpload?.token) {
+        return json({ error: errMsg(signedUploadError) }, 500);
+      }
+      return json({
+        ok: true,
+        bucket,
+        path: data,
+        token: signedUpload.token,
+        signed_url: signedUpload.signedUrl,
+        content_type: String(body.content_type || "application/octet-stream"),
+      });
     }
 
     if (action === "submit_job") {
