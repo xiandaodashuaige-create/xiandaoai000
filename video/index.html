@@ -632,10 +632,10 @@ $('submitBtn').onclick=async()=>{
 
 function aiInputFiles(){
   const groups=[
-    ['main',[...$('aiMainFiles').files]],
+    ['case_proof',[...$('aiMainFiles').files]],
     ['reference',[...$('aiReferenceFiles').files]],
-    ['asset',[...$('aiCharacterFiles').files]],
-    ['asset',[...$('aiAssetFiles').files]]
+    ['character_reference',[...$('aiCharacterFiles').files]],
+    ['ai_generated',[...$('aiAssetFiles').files]]
   ];
   return groups.flatMap(([role,files])=>files.map(file=>({role,file})));
 }
@@ -669,7 +669,7 @@ $('aiSubmitBtn').onclick=async()=>{
 【不可违反】
 - 开头与结尾保持同一 AI 人物、脸、服装和整体摄影风格；有自然眨眼、头部、身体与手势动作，不要静态照片张嘴。
 - 中文嘴型与口播同步；声音必须自然、有人类节奏，不能沿用参考视频原音。
-- 中段优先且必须使用 role=main 的客户真实素材；AI 只补确实缺失的镜头，不得把真实案例替换成虚构案例。
+- 中段优先且必须使用 role=case_proof 的客户真实素材；AI 只补确实缺失的镜头，不得把真实案例替换成虚构案例。
 - 逐句检查语义与画面，声音说什么，画面就证明什么；禁止随机拼接和无关 B-roll。
 - 参考爆款只学习 Hook、节奏、字幕、证据穿插和 CTA 结构，不复制原画面、人物、声音或原文。
 - 价格、币种、课程信息和报名方式只能使用“准确事实”及上传资料；禁止把马币写成 RMM。
