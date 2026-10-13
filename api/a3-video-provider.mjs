@@ -5,6 +5,7 @@ export const config = { maxDuration: 300 };
 const ALLOWED_ACTIONS = new Set([
   'provider_upsert_project', 'provider_init_job', 'provider_status',
   'provider_sign_upload', 'provider_submit_job', 'provider_download_url',
+  'provider_create_revision', 'provider_accept_job',
 ]);
 
 function secureEqual(left, right) {
@@ -23,6 +24,11 @@ export default async function handler(req, res) {
   if (!ALLOWED_ACTIONS.has(action)) return res.status(400).json({ error: 'unsupported_provider_action' });
   for (const required of ['tenant_id', 'project_id']) {
     if (!String(req.body?.[required] || '').trim()) return res.status(400).json({ error: `missing_${required}` });
+  }
+  if (action === 'provider_init_job') {
+    for (const required of ['conversation_session_id', 'correlation_id', 'idempotency_key']) {
+      if (!String(req.body?.[required] || '').trim()) return res.status(400).json({ error: `missing_${required}` });
+    }
   }
   const providerAccess = process.env.VIDEO_AGENT_ACCESS;
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;

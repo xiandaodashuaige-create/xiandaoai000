@@ -202,6 +202,46 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, url: data.signedUrl });
     }
 
+    if (action === "provider_create_revision") {
+      const tenantId = String(body.tenant_id || "");
+      const projectId = String(body.project_id || "");
+      const parentJobId = String(body.parent_job_id || "");
+      const { data: scopedJob, error: scopeError } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access, p_tenant_id: tenantId, p_external_project_id: projectId, p_job_id: parentJobId,
+      });
+      if (scopeError || !scopedJob?.id) return json({ error: errMsg(scopeError) }, 404);
+      const { data, error } = await sb.rpc("video_agent_create_revision", {
+        p_access: access,
+        p_parent_job_id: parentJobId,
+        p_revision_prompt: String(body.revision_prompt || ""),
+        p_revision_scope: String(body.revision_scope || "auto"),
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      if (data?.execution_target === "cloud") {
+        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-video-access": access },
+          body: JSON.stringify({ source: "provider_create_revision", job_id: data.id }),
+        }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
+      }
+      return json({ ok: true, job: data });
+    }
+
+    if (action === "provider_accept_job") {
+      const tenantId = String(body.tenant_id || "");
+      const projectId = String(body.project_id || "");
+      const jobId = String(body.job_id || "");
+      const { data: scopedJob, error: scopeError } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access, p_tenant_id: tenantId, p_external_project_id: projectId, p_job_id: jobId,
+      });
+      if (scopeError || !scopedJob?.id) return json({ error: errMsg(scopeError) }, 404);
+      if (scopedJob.status !== "completed" || !scopedJob.output_sha256) {
+        return json({ error: "job_output_not_checksum_bound" }, 409);
+      }
+      const { data, error } = await sb.rpc("video_agent_accept_job", { p_access: access, p_job_id: jobId });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, job: data });
+    }
+
     if (action === "init_job") {
       const projectId = String(body.video_project_id || "");
       const rpc = projectId ? "video_agent_create_project_job" : "video_agent_create_job";
