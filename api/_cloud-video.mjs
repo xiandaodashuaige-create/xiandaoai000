@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
@@ -121,7 +121,6 @@ async function mixAudio(video, voice, bgm, output) {
 
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}) {
   const workdir = path.join('/tmp', `video-${job.id}`);
-  await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const visual = downloadedInputs.filter((item) => /^(video|image)\//.test(String(item.type || '')) && item.role !== 'reference');
   if (!visual.length) throw new Error('missing_visual_input');
