@@ -177,7 +177,17 @@ async function runOne(accessCode) {
       result = rendered.data;
       fileName = 'creative-cloud.mp4';
       contentType = 'video/mp4';
-      artifactMeta = { duration_seconds: rendered.durationSeconds, width: rendered.width, height: rendered.height };
+      artifactMeta = {
+        duration_seconds: rendered.durationSeconds,
+        width: rendered.width,
+        height: rendered.height,
+        fps: rendered.quality?.fps,
+        bitrate_kbps: rendered.quality?.bitrateKbps,
+        loudness_lufs: rendered.quality?.loudnessLUFS,
+        true_peak_dbtp: rendered.quality?.truePeakDBTP,
+        voice_source: rendered.voiceSource,
+        voice_error: rendered.voiceError || undefined,
+      };
     }
     await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 94);
     const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: fileName });

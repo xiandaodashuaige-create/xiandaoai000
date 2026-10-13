@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import { industryStoryboard } from '../api/_cloud-industry.mjs';
-import { overlayPng, normalizeSegment, normalizeLoudness } from '../api/_cloud-video.mjs';
+import { overlayPng, normalizeSegment, normalizeLoudness, inspectRender } from '../api/_cloud-video.mjs';
 
 // Offline render-spec regression: fixed synthetic fixture, no Edge TTS / network.
 // Asserts the final cloud output spec: 1080x1920, 25 fps, -14 LUFS target.
@@ -36,4 +36,23 @@ test('final segment is 1080x1920 at 25 fps and loudness-normalised to -14 LUFS',
   const measure = spawnSync(ffmpegPath, ['-hide_banner', '-nostats', '-i', normalised, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
   const integrated = Number(measure.stderr.split('Summary:')[1].match(/I:\s+(-?[\d.]+)\s+LUFS/)[1]);
   assert.ok(Math.abs(integrated - -14) <= 1, `integrated ${integrated}`);
+  const quality = await inspectRender(normalised, 2);
+  assert.equal(quality.width, 1080);
+  assert.equal(quality.height, 1920);
+  assert.ok(quality.bitrateKbps >= 800, `bitrate ${quality.bitrateKbps}`);
+});
+
+test('reused long video starts later scenes at a different source time', async () => {
+  const work = dir();
+  const source = path.join(work, 'changing-source.mp4');
+  execFileSync(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=25:duration=8',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', source]);
+  const overlay = path.join(work, 'overlay.png');
+  await overlayPng(industryStoryboard({ brief: '業務主題：肩頸按摩' })[0], overlay);
+  const early = path.join(work, 'early.mp4');
+  const late = path.join(work, 'late.mp4');
+  await normalizeSegment({ source, type: 'video/mp4', overlay, output: early, seconds: 1, startFraction: 0 });
+  await normalizeSegment({ source, type: 'video/mp4', overlay, output: late, seconds: 1, startFraction: 0.8 });
+  const frameMd5 = (file) => execFileSync(ffmpegPath, ['-v', 'error', '-i', file, '-frames:v', '1', '-f', 'md5', '-'], { encoding: 'utf8' }).trim();
+  assert.notEqual(frameMd5(early), frameMd5(late));
 });

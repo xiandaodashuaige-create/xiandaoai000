@@ -16,6 +16,7 @@ const px = (value) => Math.round(value * K);
 const LOUDNESS = { I: -14, TP: -1.5, LRA: 11 };
 const FPS = 25;
 const SEGMENT_SECONDS = 5;
+const MIN_VIDEO_KBPS = 800;
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
 const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
 
@@ -31,6 +32,19 @@ function run(args, cwd) {
   });
 }
 
+function parseDuration(log) {
+  const match = String(log || '').match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+  return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0;
+}
+
+async function sourceDuration(file) {
+  try {
+    return parseDuration(await run(['-hide_banner', '-i', file], path.dirname(file)));
+  } catch (error) {
+    return parseDuration(error);
+  }
+}
+
 async function sourceHasAudio(file) {
   try {
     const output = await run(['-hide_banner', '-i', file, '-f', 'null', '-t', '0.05', '-'], path.dirname(file));
@@ -44,10 +58,11 @@ async function sourceHasAudio(file) {
 // ported from the local worker. An explicit hook or CTA written in the brief
 // is kept as the first or last beat title, so operator wording is not lost.
 function briefBlock(brief, pattern) {
-  return String(brief || '').match(pattern)?.[1]?.trim() || '';
+  const value = String(brief || '').match(pattern)?.[1] || '';
+  return value.split(/\s+(?=\d+\.\s*AI生成)/)[0].trim();
 }
 
-function copyFor(job) {
+export function copyFor(job) {
   const brief = String(job.brief || '').replaceAll('\\n', '\n');
   const scenes = isEnglishJob(job) ? englishStoryboard(job) : industryStoryboard(job);
   const hook = briefBlock(brief, /1\. AI生成开头 Hook[：:]([^\n]+)/);
@@ -152,13 +167,20 @@ export async function overlayPng(scene, output) {
   await sharp(svg).composite(layers).png().toFile(output);
 }
 
-export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS }) {
+export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, startFraction = 0 }) {
   const isImage = String(type || '').startsWith('image/');
   const hasAudio = !isImage && await sourceHasAudio(source);
-  const input = isImage ? ['-loop', '1', '-framerate', String(FPS), '-i', source] : ['-i', source];
+  const duration = isImage ? 0 : await sourceDuration(source);
+  const seekSeconds = duration > seconds ? Math.max(0, (duration - seconds) * Math.min(1, Math.max(0, startFraction))) : 0;
+  const input = isImage
+    ? ['-loop', '1', '-framerate', String(FPS), '-i', source]
+    : [...(seekSeconds > 0 ? ['-ss', seekSeconds.toFixed(3)] : []), '-i', source];
   const audioInput = hasAudio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
   const overlayIndex = hasAudio ? 1 : 2;
-  const videoFilter = `[0:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},fps=${FPS},setsar=1[base];[base][${overlayIndex}:v]overlay=0:0:format=auto[v]`;
+  const baseFilter = isImage
+    ? `[0:v]scale=${WIDTH * 2}:${HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${WIDTH * 2}:${HEIGHT * 2},zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${Math.ceil(seconds * FPS)}:s=${WIDTH}x${HEIGHT}:fps=${FPS},setsar=1[base]`
+    : `[0:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},fps=${FPS},setsar=1[base]`;
+  const videoFilter = `${baseFilter};[base][${overlayIndex}:v]overlay=0:0:format=auto[v]`;
   const audioMap = hasAudio ? '0:a:0' : '1:a:0';
   await run([
     '-y', ...input, ...audioInput, '-i', overlay,
@@ -188,6 +210,33 @@ export async function normalizeLoudness(input, output) {
   return output;
 }
 
+export async function inspectRender(file, expectedDuration) {
+  const log = await run(['-hide_banner', '-i', file, '-af', 'ebur128=peak=true', '-f', 'null', '-'], path.dirname(file));
+  const video = log.match(/Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b[^\n]*?(\d+(?:\.\d+)?)\s*fps/);
+  const bitrate = Number(log.match(/Duration:[^\n]*bitrate:\s*(\d+)\s*kb\/s/)?.[1] || 0);
+  const summary = log.split('Summary:').at(-1) || '';
+  const loudness = Number(summary.match(/I:\s*(-?[\d.]+)\s*LUFS/)?.[1]);
+  const truePeak = Number(summary.match(/Peak:\s*(-?[\d.]+)\s*dBFS/)?.[1]);
+  const metadata = {
+    durationSeconds: parseDuration(log),
+    width: Number(video?.[1] || 0),
+    height: Number(video?.[2] || 0),
+    fps: Number(video?.[3] || 0),
+    bitrateKbps: bitrate,
+    loudnessLUFS: Number.isFinite(loudness) ? loudness : null,
+    truePeakDBTP: Number.isFinite(truePeak) ? truePeak : null,
+  };
+  const failures = [];
+  if (metadata.width !== WIDTH || metadata.height !== HEIGHT) failures.push(`resolution_${metadata.width}x${metadata.height}`);
+  if (Math.abs(metadata.fps - FPS) >= 0.5) failures.push(`fps_${metadata.fps}`);
+  if (Math.abs(metadata.durationSeconds - expectedDuration) > 1) failures.push(`duration_${metadata.durationSeconds}`);
+  if (metadata.bitrateKbps < MIN_VIDEO_KBPS) failures.push(`bitrate_${metadata.bitrateKbps}`);
+  if (metadata.loudnessLUFS === null || metadata.loudnessLUFS < -17 || metadata.loudnessLUFS > -11) failures.push(`loudness_${metadata.loudnessLUFS}`);
+  if (metadata.truePeakDBTP === null || metadata.truePeakDBTP > -1) failures.push(`true_peak_${metadata.truePeakDBTP}`);
+  if (failures.length) throw new Error(`cloud_render_quality_failed:${failures.join(',')}`);
+  return metadata;
+}
+
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}) {
   const workdir = path.join('/tmp', `video-${job.id}`);
   await rm(workdir, { recursive: true, force: true });
@@ -197,6 +246,12 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const uploadedVoice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = downloadedInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   const scenes = copyFor(job);
+  const sourceCounts = new Map();
+  for (let index = 0; index < scenes.length; index += 1) {
+    const source = visual[index] || visual[index % visual.length];
+    sourceCounts.set(source.localPath, (sourceCounts.get(source.localPath) || 0) + 1);
+  }
+  const sourceOccurrences = new Map();
   const { voice, voiceSource, voiceError } = await resolveVoiceover({
     uploadedVoice, job, scenes, outputPath: path.join(workdir, 'voiceover-tts.mp3'),
   });
@@ -205,8 +260,18 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     const source = visual[index] || visual[index % visual.length];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
+    const occurrence = sourceOccurrences.get(source.localPath) || 0;
+    const count = sourceCounts.get(source.localPath) || 1;
+    sourceOccurrences.set(source.localPath, occurrence + 1);
     await overlayPng(scenes[index], overlay);
-    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: scenes[index].seconds ?? SEGMENT_SECONDS });
+    await normalizeSegment({
+      source: source.localPath,
+      type: source.type,
+      overlay,
+      output: segment,
+      seconds: scenes[index].seconds ?? SEGMENT_SECONDS,
+      startFraction: count > 1 ? occurrence / count : 0,
+    });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }
@@ -217,9 +282,11 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const finalPath = path.join(workdir, 'final-cloud.mp4');
   const mixed = await mixAudio(assembled, voice, bgm, path.join(workdir, 'mixed.mp4'));
   const result = await normalizeLoudness(mixed, finalPath);
+  const expectedDuration = scenes.reduce((sum, scene) => sum + (scene.seconds ?? SEGMENT_SECONDS), 0);
+  const quality = await inspectRender(result, expectedDuration);
   await onProgress(90, '云端成片已生成，正在质检与回传');
   return {
-    data: await readFile(result), durationSeconds: scenes.reduce((sum, scene) => sum + (scene.seconds ?? SEGMENT_SECONDS), 0), width: WIDTH, height: HEIGHT,
-    voiceSource, voiceError,
+    data: await readFile(result), durationSeconds: expectedDuration, width: WIDTH, height: HEIGHT,
+    voiceSource, voiceError, quality,
   };
 }
