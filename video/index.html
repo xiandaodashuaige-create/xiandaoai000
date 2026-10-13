@@ -384,7 +384,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const SUPABASE_URL='https://ejspsxjeelhsevldmnhl.supabase.co';
 const SUPABASE_KEY='sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ';
-const FN=SUPABASE_URL+'/functions/v1/video-agent-v0';
+const FN='/api/video-agent';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
 
@@ -432,7 +432,7 @@ if(!saved)showModal();
 async function api(action,body={}){
   const access=sessionStorage.getItem('lulianVideoAccess')||$('access').value.trim();
   if(!access){showModal();throw new Error('请先输入员工访问口令')}
-  const r=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json','x-video-access':access,'apikey':SUPABASE_KEY},body:JSON.stringify({action,...body})});
+  const r=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json','x-employee-access':access},body:JSON.stringify({action,...body})});
   const data=await r.json();
   if(!r.ok||data.error)throw new Error(data.error||'请求失败');
   return data;
