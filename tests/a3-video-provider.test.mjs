@@ -30,6 +30,37 @@ test('requires tenant and project scope for every A3 action', async () => {
   assert.deepEqual(res.body, { error: 'missing_project_id' });
 });
 
+test('requires full conversation scope for provider job creation', async () => {
+  process.env.A3_VIDEO_PROVIDER_TOKEN = 'strong-a3-token';
+  const res = responseRecorder();
+  await handler({
+    method: 'POST', headers: { authorization: 'Bearer strong-a3-token' },
+    body: { action: 'provider_init_job', tenant_id: 'tenant-a', project_id: 'project-a', idempotency_key: 'idem-a' },
+  }, res);
+  assert.equal(res.code, 400);
+  assert.deepEqual(res.body, { error: 'missing_conversation_session_id' });
+});
+
+test('allows revision and acceptance actions through the scoped gateway', async () => {
+  process.env.A3_VIDEO_PROVIDER_TOKEN = 'strong-a3-token';
+  process.env.VIDEO_AGENT_ACCESS = 'provider-secret';
+  process.env.SUPABASE_PUBLISHABLE_KEY = 'publishable-key';
+  const actions = [];
+  globalThis.fetch = async (_url, options) => {
+    actions.push(JSON.parse(options.body).action);
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  for (const body of [
+    { action: 'provider_create_revision', tenant_id: 'tenant-a', project_id: 'project-a', parent_job_id: 'job-a' },
+    { action: 'provider_accept_job', tenant_id: 'tenant-a', project_id: 'project-a', job_id: 'job-b' },
+  ]) {
+    const res = responseRecorder();
+    await handler({ method: 'POST', headers: { authorization: 'Bearer strong-a3-token' }, body }, res);
+    assert.equal(res.code, 200);
+  }
+  assert.deepEqual(actions, ['provider_create_revision', 'provider_accept_job']);
+});
+
 test('forwards only scoped provider actions with the server secret', async () => {
   process.env.A3_VIDEO_PROVIDER_TOKEN = 'strong-a3-token';
   process.env.VIDEO_AGENT_ACCESS = 'provider-secret';
