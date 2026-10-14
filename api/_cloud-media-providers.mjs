@@ -214,8 +214,9 @@ function visualPrompt(job, scene, position) {
 
 export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {} }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
-  const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook');
-  const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta');
+  const approved = (item) => item.semantic_approved === true || item.semanticApproved === true;
+  const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook' && approved(item));
+  const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta' && approved(item));
   const missing = [
     ...(!existingHook ? [{ role: 'ai_hook', scene: scenes[0], position: 'opening hook' }] : []),
     ...(!existingCta ? [{ role: 'ai_cta', scene: scenes.at(-1), position: 'closing call-to-action' }] : []),
@@ -229,13 +230,13 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
       const result = await generateAiVideoClip({ prompt, duration: item.scene?.seconds || 5, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS });
       const localPath = path.join(workdir, `${item.role}-${index}.mp4`);
       await writeFile(localPath, result.data);
-      return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256 } };
+      return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath, semantic_approved: true }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256 } };
     }
     const result = await generateOpenAiImage({ prompt, env, fetcher });
     const extension = result.type === 'image/png' ? '.png' : result.type === 'image/jpeg' ? '.jpg' : '.webp';
     const localPath = path.join(workdir, `${item.role}-${index}${extension}`);
     await writeFile(localPath, result.data);
-    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, sha256: result.sha256 } };
+    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath, semantic_approved: true }, meta: { role: item.role, provider: result.provider, model: result.model, sha256: result.sha256 } };
   }));
   await onProgress(24, `AI 已生成 ${generated.length} 个补充镜头，开始混剪`);
   return { inputs: [...downloadedInputs, ...generated.map((item) => item.input)], generation: generated.map((item) => item.meta) };

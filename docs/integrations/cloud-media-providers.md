@@ -47,3 +47,21 @@ AI_PROVIDER_MAX_WAIT_MS=210000
 `AI_VIDEO_PROVIDER=auto` prefers Seedance when both keys exist, then Runway. Provider output is downloaded only from public HTTPS URLs, is size-bounded, and is passed through the same 1080×1920 render and quality gates as uploaded media.
 
 Do not enable the switch until billing limits, credentials, and a small canary budget are approved. The worker never exposes secret values in its capability endpoint.
+
+## Voice fallback
+
+Edge TTS remains the zero-configuration default. To permit a paid OpenAI fallback after Edge is unavailable, configure:
+
+```text
+OPENAI_TTS_ENABLED=true
+OPENAI_API_KEY=...
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_TTS_VOICE=marin
+TTS_PROVIDER=auto
+```
+
+`TTS_PROVIDER=edge` disables fallback. `TTS_PROVIDER=openai` uses OpenAI directly and still requires `OPENAI_TTS_ENABLED=true`. Uploaded voiceover always has priority over both providers. The worker records `voice_source`, `voice_provider`, and any `voice_error` in the output artifact. Customer-facing playback must disclose that generated narration is an AI voice.
+
+## Reference pacing and transitions
+
+A visual input with `role=reference` is analyzed only for scene-cut rhythm. Its pixels and audio never enter the output timeline. The five storyboard beat lengths are softly adapted to that rhythm while preserving the campaign's planned total duration. Every scene is rendered with an extra 0.5-second visual handle, then joined with a soft dissolve; the assembled source-audio track and scene voice track retain the original logical duration, preventing the CTA narration from being truncated.

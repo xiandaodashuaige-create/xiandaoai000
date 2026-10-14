@@ -7,7 +7,7 @@ import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
-import { overlayPng, normalizeLoudness, sceneStarts, renderVoiceTrack } from '../api/_cloud-video.mjs';
+import { assembleWithTransitions, overlayPng, normalizeLoudness, pacingFromReferenceCuts, sceneStarts, renderVoiceTrack } from '../api/_cloud-video.mjs';
 import { fitSecondsToVoice } from '../api/_cloud-tts.mjs';
 import { industryStoryboard } from '../api/_cloud-industry.mjs';
 
@@ -41,6 +41,30 @@ test('scene start points match the local worker on the same 39s clip', () => {
   const scenes = industryStoryboard({ brief: '業務主題：想試下呢個療程' });
   const starts = sceneStarts(39.056, scenes).map((value) => Number(value.toFixed(2)));
   assert.deepEqual(starts, [1.17, 8.59, 16.4, 23.82, 30.46]);
+});
+
+test('reference cuts influence pacing without changing the campaign duration', () => {
+  const base = [3, 5, 6, 6, 5];
+  const paced = pacingFromReferenceCuts([0.8, 1.7, 3.2, 6.8, 8.2, 11.9, 16.8, 18.1, 23.5], 25, base);
+  assert.equal(paced.length, 5);
+  assert.ok(paced.some((value, index) => value !== base[index]));
+  assert.ok(Math.abs(paced.reduce((sum, value) => sum + value, 0) - 25) < 0.01);
+});
+
+test('visual crossfades preserve the logical voice timeline duration', async () => {
+  const work = dir();
+  const durations = [2, 3, 2.5];
+  const segments = durations.map((duration, index) => {
+    const output = path.join(work, `transition-${index}.mp4`);
+    execFileSync(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${['red', 'green', 'blue'][index]}:s=360x640:r=30:d=${duration + (index < 2 ? 0.5 : 0)}`,
+      '-f', 'lavfi', '-i', `sine=frequency=${300 + index * 100}:duration=${duration + (index < 2 ? 0.5 : 0)}`,
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', output]);
+    return output;
+  });
+  const output = path.join(work, 'transitioned.mp4');
+  await assembleWithTransitions({ segments, durations, output, workdir: work });
+  const length = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', output], { encoding: 'utf8' }));
+  assert.ok(Math.abs(length - 7.5) < 0.12, `timeline ${length}s`);
 });
 
 test('scene length grows to fit its own voice and never drops below the template time', () => {

@@ -129,6 +129,7 @@ test('AI Hybrid fills missing hook and CTA with GPT images when video is not con
       fetcher: async () => json({ data: [{ b64_json: fixture.toString('base64') }] }),
     });
     assert.deepEqual(result.inputs.map((item) => item.role), ['ai_hook', 'ai_cta']);
+    assert.ok(result.inputs.every((item) => item.semantic_approved === true));
     assert.ok((await readFile(result.inputs[0].localPath)).length > 100);
     assert.deepEqual(result.generation.map((item) => item.provider), ['openai', 'openai']);
   } finally { await rm(workdir, { recursive: true, force: true }); }
@@ -171,7 +172,10 @@ test('poster UI permits an empty main image and the worker uses only role=main a
 
 test('capability endpoint separates installed adapters from configured providers', async () => {
   const worker = await readFile(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
-  assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'\]/);
+  assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway', 'seedance', 'runway', 'edge_tts', 'openai_tts'\]/);
+  assert.match(worker, /reference_pacing/);
+  assert.match(worker, /soft_transitions/);
+  assert.match(worker, /OPENAI_TTS_ENABLED === 'true'/);
   assert.match(worker, /req\.headers\['x-vercel-oidc-token'\]/);
-  assert.match(worker, /providers: mediaProviderCapabilities\(mediaEnv\)/);
+  assert.match(worker, /\.\.\.mediaProviderCapabilities\(mediaEnv\)/);
 });
