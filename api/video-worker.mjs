@@ -21,10 +21,14 @@ function env(name) {
 
 function authorised(req) {
   const supplied = String(req.headers['x-video-access'] || '');
-  const expected = env('VIDEO_AGENT_ACCESS');
-  const a = Buffer.from(supplied);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const candidates = [process.env.VIDEO_AGENT_ACCESS, process.env.VIDEO_WORKER_CANARY_ACCESS]
+    .filter(Boolean)
+    .map(String);
+  return supplied.length > 0 && candidates.some((expected) => {
+    const a = crypto.createHash('sha256').update(supplied).digest();
+    const b = crypto.createHash('sha256').update(expected).digest();
+    return crypto.timingSafeEqual(a, b);
+  });
 }
 
 function headers() {
