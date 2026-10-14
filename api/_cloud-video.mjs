@@ -5,6 +5,7 @@ import ffmpegPath from 'ffmpeg-static';
 import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob } from './_cloud-tts.mjs';
 import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
 import sharp from 'sharp';
+import { prepareAiHybridAssets } from './_cloud-media-providers.mjs';
 
 // Output is 1080x1920 to match the local worker. Overlay layout is authored
 // at 720 and scaled by K so both paths keep the same proportions.
@@ -297,11 +298,13 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const workdir = path.join('/tmp', `video-${job.id}`);
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
-  const visual = selectSceneSources(downloadedInputs);
-  if (!visual.length) throw new Error('missing_visual_input');
-  const uploadedVoice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
-  const bgm = downloadedInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   const scenes = copyFor(job);
+  const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress });
+  const activeInputs = prepared.inputs;
+  const visual = selectSceneSources(activeInputs);
+  if (!visual.length) throw new Error('missing_visual_input');
+  const uploadedVoice = activeInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
+  const bgm = activeInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   let voice = uploadedVoice || null;
   let voiceSource = uploadedVoice ? 'uploaded' : 'none';
   let voiceError = null;
@@ -315,14 +318,17 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     }
   }
   const segments = [];
-  const sourceSeconds = await sourceDuration(visual[0].localPath);
-  const starts = sceneStarts(sourceSeconds, scenes);
+  const durationBySource = new Map();
+  for (const source of visual) {
+    if (!durationBySource.has(source.localPath)) durationBySource.set(source.localPath, await sourceDuration(source.localPath));
+  }
   for (let index = 0; index < scenes.length; index += 1) {
     const source = visual[index] || visual[index % visual.length];
+    const start = sceneStarts(durationBySource.get(source.localPath) || 0, scenes)[index];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
-    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: scenes[index].seconds ?? SEGMENT_SECONDS, start: starts[index] });
+    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: scenes[index].seconds ?? SEGMENT_SECONDS, start });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }
@@ -338,6 +344,6 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await onProgress(90, '云端成片已生成，正在质检与回传');
   return {
     data: await readFile(result), durationSeconds: expectedDuration, width: WIDTH, height: HEIGHT,
-    voiceSource, voiceError, quality,
+    voiceSource, voiceError, quality, mediaGeneration: prepared.generation,
   };
 }
