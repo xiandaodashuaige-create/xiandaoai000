@@ -773,7 +773,10 @@ async function showJob(id){
     h+='<div class="revactions">'+
       (job.accepted_at?'<span class="accepted">✓ 这一版已确认</span>':'<button class="revbtn primarymini accept-job">👍 满意，完成</button>')+
       '<button class="revbtn revise-job">继续优化</button></div>';
-  } else if(job.status==='failed')h+='<div class="meta" style="color:#ff9a9a">'+escapeHtml(job.error_message||'任务失败')+'</div>';
+  } else if(job.status==='failed'){
+    h+='<div class="meta" style="color:#ff9a9a">'+escapeHtml(job.error_message||'任务失败')+'</div>';
+    if(job.input_files?.length)h+='<div class="revactions"><button class="revbtn primarymini retry-job">复用原素材重新生成</button></div>';
+  }
   else h+='<div class="meta">制作完成后，成片会出现在这里。</div>';
   root.innerHTML=h;
   root.querySelectorAll('.result-download').forEach(btn=>btn.onclick=async()=>{
@@ -787,6 +790,17 @@ async function showJob(id){
     setTimeout(()=>URL.revokeObjectURL(u),60000);
   });
   root.querySelector('.revise-job')?.addEventListener('click',()=>openRevision(job));
+  root.querySelector('.retry-job')?.addEventListener('click',async(event)=>{
+    const btn=event.currentTarget;btn.disabled=true;btn.textContent='正在重新提交…';
+    try{
+      const result=await api('retry_failed_job',{job_id:job.id});
+      await loadJobs();
+      alert('已复用原素材重新提交 V'+(result.job.version_number||2)+'，无需重新上传。');
+    }catch(e){
+      btn.disabled=false;btn.textContent='复用原素材重新生成';
+      alert('重新生成失败：'+e.message);
+    }
+  });
   root.querySelector('.accept-job')?.addEventListener('click',async()=>{
     try{await api('accept_job',{job_id:job.id});await showJob(job.id);await loadJobs();}
     catch(e){alert('确认失败：'+e.message)}

@@ -36,3 +36,28 @@ test('provider feedback is tenant scoped before project memory is updated', () =
   assert.match(providerBlock, /p_content:\s*feedbackText/);
   assert.match(providerBlock, /p_metadata:/);
 });
+
+test('failed job retry reuses stored inputs and triggers the cloud worker', () => {
+  const retryBlock = source.slice(
+    source.indexOf('if (action === "retry_failed_job")'),
+    source.indexOf('if (action === "accept_job")'),
+  );
+  assert.match(retryBlock, /video_agent_create_revision/);
+  assert.match(retryBlock, /p_parent_job_id/);
+  assert.match(retryBlock, /p_revision_scope:\s*"retry_failed"/);
+  assert.match(retryBlock, /source:\s*"retry_failed_job"/);
+  assert.match(retryBlock, /CLOUD_WORKER_URL/);
+});
+
+test('retry migration is access checked, input preserving, and idempotent', async () => {
+  const migration = await readFile(
+    new URL('../supabase/migrations/20261014105437_retry_failed_video_jobs.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(migration, /video_agent_check_access\(p_access\)/);
+  assert.match(migration, /p\.status = 'failed'/);
+  assert.match(migration, /p\.input_files/);
+  assert.match(migration, /'retry_failed'/);
+  assert.match(migration, /where parent_job_id=p_parent_job_id/);
+  assert.match(migration, /revoke all on function public\.video_agent_create_revision\(text,uuid,text,text\) from public/);
+});
