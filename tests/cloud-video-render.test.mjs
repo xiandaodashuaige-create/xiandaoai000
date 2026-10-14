@@ -18,6 +18,7 @@ test('every storyboard template renders a 1080x1920 overlay', async () => {
     ...industryStoryboard({ brief: '業務主題：肩頸按摩' }),
     { template: 'clean_caption', title: '真人手法｜真實過程', showSubtitle: false },
     { template: 'clean_cta', title: 'WhatsApp 預約肩頸放鬆體驗', button: 'WhatsApp 預約', showSubtitle: false },
+    { template: 'source_native', title: '', showSubtitle: false },
   ];
   for (const [index, scene] of scenes.entries()) {
     const output = path.join(dir(), `overlay-${index}.png`);
@@ -27,6 +28,13 @@ test('every storyboard template renders a 1080x1920 overlay', async () => {
     assert.equal(meta.height, 1920, `${scene.template} height`);
     assert.equal(meta.hasAlpha, true, `${scene.template} alpha`);
   }
+});
+
+test('source-native overlay is fully transparent and cannot cover original viral copy', async () => {
+  const output = path.join(dir(), 'source-native.png');
+  await overlayPng({ template: 'source_native' }, output);
+  const stats = await sharp(output).stats();
+  assert.equal(stats.channels[3].max, 0);
 });
 
 test('final audio is normalised to the -16 LUFS local target', async () => {

@@ -146,6 +146,17 @@ test('AI Hybrid never pretends uploaded remix footage was generated', async () =
   );
 });
 
+test('a customer viral hook disables paid AI hook and CTA generation', async () => {
+  const hook = { role: 'viral_hook', type: 'video/mp4', localPath: '/tmp/customer-hook.mp4' };
+  const result = await prepareAiHybridAssets({
+    job: { workflow_mode: 'ai_hybrid' }, downloadedInputs: [hook],
+    scenes: [{ title: 'generic hook' }, { title: 'generic CTA' }], workdir: '/tmp', env: {},
+    fetcher: async () => { throw new Error('paid provider must not be called'); },
+  });
+  assert.deepEqual(result.inputs, [hook]);
+  assert.deepEqual(result.generation, []);
+});
+
 test('provider downloads reject local and private-network URLs', async () => {
   await assert.rejects(
     generateAiVideoClip({

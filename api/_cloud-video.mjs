@@ -149,6 +149,97 @@ export function selectSceneSources(inputs) {
   return [pick(hook), pick(proof, 0), pick(proof, 1), pick(proof, 2), pick(cta)].filter(Boolean);
 }
 
+const SOURCE_LED_HOOK_ROLES = new Set(['viral_hook', 'customer_hook']);
+const SOURCE_LED_MIDDLE_ROLES = ['process', 'service_value', 'trust_proof', 'case_proof', 'main', 'asset'];
+const SOURCE_LED_CTA_ROLES = new Set(['customer_cta', 'cta']);
+
+function stableNumber(value) {
+  let hash = 2166136261;
+  for (const char of String(value || 'default')) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function stableInputs(items) {
+  return [...items].sort((a, b) => {
+    const aSequence = Number(a.sequence ?? a.order ?? Number.MAX_SAFE_INTEGER);
+    const bSequence = Number(b.sequence ?? b.order ?? Number.MAX_SAFE_INTEGER);
+    if (aSequence !== bSequence) return aSequence - bSequence;
+    const aPriority = Number(a.priority ?? 0);
+    const bPriority = Number(b.priority ?? 0);
+    if (aPriority !== bPriority) return bPriority - aPriority;
+    return String(a.name || a.path || a.localPath || '').localeCompare(String(b.name || b.path || b.localPath || ''));
+  });
+}
+
+function boundedSeconds(source, fallback) {
+  return Math.max(2, Math.min(6, Number(source.segment_duration ?? source.segmentDuration ?? source.clip_duration ?? fallback) || fallback));
+}
+
+function sourceStart(source) {
+  return Math.max(0, Number(source.clip_start ?? source.clipStart ?? source.trim_start ?? source.trimStartSeconds ?? 0) || 0);
+}
+
+// Fixed product contract for customer-material remixes. Variation is allowed
+// only inside the approved hook pool and is reproducible from variant_seed.
+// Copy, voice identity and CTA behavior are never randomized.
+export function sourceLedRemixPlan(job, inputs) {
+  const visuals = inputs.filter((item) => /^(video|image)\//.test(String(item.type || '')));
+  const hooks = stableInputs(visuals.filter((item) => SOURCE_LED_HOOK_ROLES.has(item.role) && String(item.type || '').startsWith('video/')));
+  if (!hooks.length) return null;
+  const seed = String(job.variant_seed ?? job.variantSeed ?? job.id ?? 'default');
+  const hook = hooks[stableNumber(seed) % hooks.length];
+  const middles = stableInputs(visuals.filter((item) => SOURCE_LED_MIDDLE_ROLES.includes(item.role) && item !== hook));
+  if (!middles.length) throw new Error('remix_missing_customer_middle_material');
+  const customerCtas = stableInputs(visuals.filter((item) => SOURCE_LED_CTA_ROLES.has(item.role)));
+  const cta = customerCtas.length ? customerCtas[stableNumber(`${seed}:cta`) % customerCtas.length] : null;
+  const selectedMiddle = middles.slice(0, 3);
+  const warnings = [];
+
+  const nativeScene = (source, phase, fallbackSeconds) => {
+    if (phase !== 'hook' && (source.preserve_audio === true || source.preserveAudio === true)) warnings.push(`secondary_source_audio_muted:${source.name || source.role}`);
+    return {
+      template: 'source_native', title: '', subtitle: '', vo: '', showSubtitle: false,
+      seconds: boundedSeconds(source, fallbackSeconds), sourceStart: sourceStart(source),
+      audioMode: phase === 'hook' ? 'anchor' : 'silent',
+      phase,
+    };
+  };
+
+  const scenes = [nativeScene(hook, 'hook', 3)];
+  const sources = [hook];
+  for (const source of selectedMiddle) {
+    scenes.push(nativeScene(source, 'middle', 4));
+    sources.push(source);
+  }
+  if (cta) {
+    scenes.push(nativeScene(cta, 'cta', 3));
+    sources.push(cta);
+  } else {
+    const fallbackSource = selectedMiddle.at(-1);
+    scenes.push({
+      template: 'clean_cta', title: '', subtitle: '', vo: '', showSubtitle: false,
+      button: '➜ WhatsApp 聯繫預約', seconds: 3, sourceStart: sourceStart(fallbackSource),
+      audioMode: 'silent', phase: 'cta',
+    });
+    sources.push(fallbackSource);
+    warnings.push('customer_cta_missing_simple_whatsapp_fallback_used');
+  }
+  return {
+    scenes, sources, warnings: [...new Set(warnings)],
+    contract: {
+      mode: 'customer_source_led_v1', deterministic: true, variantSeed: seed,
+      hookSource: hook.name || hook.path || hook.localPath,
+      hookAudio: 'continuous_original_anchor', middleSourceCount: selectedMiddle.length,
+      voiceIdentity: 'continuous_from_hook_source',
+      textMode: 'preserve_source_no_generated_overlay',
+      ctaMode: cta ? 'customer_original' : 'simple_whatsapp_fallback',
+    },
+  };
+}
+
 function compactLine(value) {
   return String(value || '').replace(/\s*\n\s*/g, '｜').replace(/\s+/g, ' ').trim();
 }
@@ -217,8 +308,12 @@ function textImage(text, fontFile, width, fontSize, color, weight = 700, align =
 // Templates follow the local worker: big text hook, pain cards, WhatsApp
 // chat bubbles, and a CTA button.
 export async function overlayPng(scene, output) {
-  const fontFile = await ensureFont();
   const template = scene.template || 'big_text_hook';
+  if (template === 'source_native') {
+    await sharp({ create: { width: WIDTH, height: HEIGHT, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toFile(output);
+    return;
+  }
+  const fontFile = await ensureFont();
   const shapes = [];
   const composites = [];
   const pad = px(24);
@@ -294,12 +389,12 @@ export async function overlayPng(scene, output) {
   // avoids the large offer card/phone mock-up taking over the whole frame.
   if (template === 'clean_cta') {
     const title = await text(compactLine(scene.title), px(560), px(42), '#ffffff', 800, 'centre');
-    const label = await text(scene.button || 'WhatsApp 預約', px(360), px(32), '#ffffff', 800, 'centre');
+    const label = await text(scene.button || '➜ WhatsApp 聯繫預約', px(420), px(30), '#ffffff', 800, 'centre');
     const top = px(820);
     shapes.push(`<rect x="${px(45)}" y="${top}" width="${px(630)}" height="${px(300)}" rx="${px(28)}" fill="#111111" fill-opacity=".76"/>`);
     if (title) composites.push({ input: title.image, top: top + px(38), left: px(80) });
     shapes.push(`<rect x="${px(170)}" y="${top + px(185)}" width="${px(380)}" height="${px(78)}" rx="${px(39)}" fill="#25d366"/>`);
-    if (label) composites.push({ input: label.image, top: top + px(185) + Math.round((px(78) - label.height) / 2), left: px(180) });
+    if (label) composites.push({ input: label.image, top: top + px(185) + Math.round((px(78) - label.height) / 2), left: px(150) });
   }
 
   // Main title: centred, bold, with a dark shadow for legibility.
@@ -360,6 +455,7 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
     '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-maxrate', '16M', '-bufsize', '32M',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2', output,
   ], path.dirname(output));
+  return { hasAudio };
 }
 
 export async function assembleWithTransitions({ segments, durations, output, workdir, transitionSeconds = TRANSITION_SECONDS }) {
@@ -405,6 +501,17 @@ async function mixAudio(video, voice, bgm, output) {
   else if (voice) filter = '[0:a]volume=.16[a0];[1:a]volume=1.2[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]';
   else filter = '[0:a]volume=.70[a0];[1:a]volume=.12[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]';
   await run(['-y', ...inputs, '-filter_complex', filter, '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', output], path.dirname(output));
+  return output;
+}
+
+async function extractAnchorAudio(source, start, seconds, output) {
+  if (!await sourceHasAudio(source)) throw new Error('remix_hook_missing_original_audio');
+  const duration = await sourceDuration(source);
+  if (duration - start < seconds - 0.2) throw new Error('remix_hook_audio_too_short_for_timeline');
+  await run([
+    '-y', ...(start > 0 ? ['-ss', start.toFixed(2)] : []), '-i', source, '-vn',
+    '-t', String(seconds), '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s16le', output,
+  ], path.dirname(output));
   return output;
 }
 
@@ -487,17 +594,20 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   scenes.forEach((scene, index) => { scene.seconds = pacing.durations[index] ?? scene.seconds; });
   const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress, env: options.mediaEnv || process.env });
   const activeInputs = prepared.inputs;
-  const visual = selectSceneSources(activeInputs);
+  const sourceLed = sourceLedRemixPlan(job, activeInputs);
+  let visual = sourceLed?.sources || selectSceneSources(activeInputs);
   if (!visual.length) throw new Error('missing_visual_input');
-  const sparse = sparseStoryboardForSingleSource(scenes, visual);
+  const sparse = sourceLed
+    ? { applied: false, warning: null, scenes: sourceLed.scenes }
+    : sparseStoryboardForSingleSource(scenes, visual);
   scenes = sparse.scenes;
   const uploadedVoice = activeInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = activeInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
-  let voice = uploadedVoice || null;
-  let voiceSource = uploadedVoice ? 'uploaded' : 'none';
-  let voiceProvider = uploadedVoice ? 'uploaded' : null;
+  let voice = sourceLed ? null : (uploadedVoice || null);
+  let voiceSource = sourceLed ? 'source_locked' : (uploadedVoice ? 'uploaded' : 'none');
+  let voiceProvider = sourceLed ? null : (uploadedVoice ? 'uploaded' : null);
   let voiceError = null;
-  if (!uploadedVoice) {
+  if (!sourceLed && !uploadedVoice) {
     const timed = await renderVoiceTrack({ job, scenes, workdir, synthesize: options.synthesize, env: options.mediaEnv || process.env, fetcher: options.fetcher });
     if (timed.ok) {
       voice = timed.path;
@@ -507,7 +617,14 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
       voiceError = timed.reason;
     }
   }
+  if (sourceLed) {
+    const total = scenes.reduce((sum, scene) => sum + (scene.seconds ?? SEGMENT_SECONDS), 0);
+    voice = await extractAnchorAudio(visual[0].localPath, scenes[0].sourceStart || 0, total, path.join(workdir, 'customer-anchor.wav'));
+    voiceSource = 'customer_anchor';
+    voiceProvider = 'original_source';
+  }
   const segments = [];
+  let preservedAudioSegments = 0;
   const durationBySource = new Map();
   for (const source of visual) {
     if (!durationBySource.has(source.localPath)) durationBySource.set(source.localPath, await sourceDuration(source.localPath));
@@ -516,7 +633,10 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     const source = visual[index] || visual[index % visual.length];
     const customStarts = source.scene_starts ?? source.sceneStarts;
     const customStart = Array.isArray(customStarts) ? Number(customStarts[index]) : NaN;
-    const start = Number.isFinite(customStart)
+    const plannedStart = Number(scenes[index].sourceStart);
+    const start = Number.isFinite(plannedStart)
+      ? plannedStart
+      : Number.isFinite(customStart)
       ? customStart
       : sceneStarts(durationBySource.get(source.localPath) || 0, scenes, source)[index];
     const overlay = path.join(workdir, `overlay-${index}.png`);
@@ -526,16 +646,19 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     const renderSeconds = wanted + (index < scenes.length - 1 ? TRANSITION_SECONDS : 0);
     // Short clips loop (as the local worker does) so the scene keeps its length.
     const loop = !String(source.type || '').startsWith('image/') && durationBySource.get(source.localPath) < start + renderSeconds;
-    await normalizeSegment({
+    const normalized = await normalizeSegment({
       source: source.localPath, type: source.type, overlay, output: segment,
       seconds: renderSeconds, start, loop, cropOverride: source.crop,
       fitMode: source.fit_mode ?? source.fitMode ?? 'fill',
       focusX: Array.isArray(source.focus_x ?? source.focusX)
         ? (source.focus_x ?? source.focusX)[index]
         : (source.focus_x ?? source.focusX ?? 0.5),
-      preserveSourceAudio: source.preserve_audio === true || source.preserveAudio === true,
+      preserveSourceAudio: sourceLed
+        ? false
+        : source.preserve_audio === true || source.preserveAudio === true,
       overlaySeconds: wanted,
     });
+    if (normalized.hasAudio) preservedAudioSegments += 1;
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }
@@ -544,9 +667,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await assembleWithTransitions({ segments, durations, output: assembled, workdir });
   const finalPath = path.join(workdir, 'final-cloud.mp4');
   const mixed = await mixAudio(assembled, voice, bgm, path.join(workdir, 'mixed.mp4'));
-  const hasMeaningfulAudio = Boolean(
-    voice || bgm || visual.some((source) => source.preserve_audio === true || source.preserveAudio === true),
-  );
+  const hasMeaningfulAudio = Boolean(voice || bgm || preservedAudioSegments);
   const result = hasMeaningfulAudio
     ? await normalizeLoudness(mixed, finalPath)
     : (await copyFile(mixed, finalPath), finalPath);
@@ -560,8 +681,10 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     contentQuality: {
       uniqueVisualSources: new Set(visual.map((source) => source.localPath)).size,
       sparseLayout: sparse.applied,
-      warning: sparse.warning,
+      warning: sourceLed?.warnings?.length ? sourceLed.warnings : sparse.warning,
       audioStatus: hasMeaningfulAudio ? 'present' : 'silent_wrong_source_audio_removed',
+      preservedAudioSegments,
+      remixContract: sourceLed?.contract || null,
     },
   };
 }

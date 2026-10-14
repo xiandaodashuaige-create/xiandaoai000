@@ -65,3 +65,14 @@ TTS_PROVIDER=auto
 ## Reference pacing and transitions
 
 A visual input with `role=reference` is analyzed only for scene-cut rhythm. Its pixels and audio never enter the output timeline. The five storyboard beat lengths are softly adapted to that rhythm while preserving the campaign's planned total duration. Every scene is rendered with an extra 0.5-second visual handle, then joined with a soft dissolve; the assembled source-audio track and scene voice track retain the original logical duration, preventing the CTA narration from being truncated.
+
+## Fixed customer-remix contract
+
+An input with `role=viral_hook` or `role=customer_hook` activates the source-led remix path. This path does not use the generic five-beat copy template.
+
+- The opening is selected only from the customer hook pool. `variant_seed` may select another approved hook, but the same seed and inputs always produce the same selection.
+- The hook's original picture, embedded poster copy and original audio are preserved. No generated title or caption is placed over it.
+- The middle uses only customer inputs with `role=process`, `service_value`, `trust_proof`, `case_proof`, `main`, or `asset`, ordered by `sequence` and then `priority`. A source-led job without middle material fails with `remix_missing_customer_middle_material` instead of fabricating content.
+- The selected hook video's original audio becomes one continuous anchor track across the whole remix. Middle and CTA footage contribute pictures and embedded copy only; their audio is muted, so a second presenter can never suddenly replace the hook speaker. The job fails with `remix_hook_missing_original_audio` or `remix_hook_audio_too_short_for_timeline` when that promise cannot be kept. Generic TTS is disabled because it cannot honestly match an arbitrary customer's original voice.
+- A customer ending with `role=customer_cta` or `role=cta` is used unchanged. When none exists, the only generated ending is a compact `➜ WhatsApp 聯繫預約` CTA; no offer, price or claim is invented.
+- `content_quality.remixContract` records the hook source, deterministic seed, voice rule, text rule, middle-source count and CTA mode for every result.

@@ -215,6 +215,8 @@ function visualPrompt(job, scene, position) {
 export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {} }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
   const approved = (item) => item.semantic_approved === true || item.semanticApproved === true;
+  const sourceLed = downloadedInputs.some((item) => ['viral_hook', 'customer_hook'].includes(item.role) && String(item.type || '').startsWith('video/'));
+  if (sourceLed) return { inputs: downloadedInputs, generation: [] };
   const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook' && approved(item));
   const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta' && approved(item));
   const missing = [

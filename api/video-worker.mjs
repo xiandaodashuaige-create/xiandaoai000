@@ -221,6 +221,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
         pacing: rendered.pacing,
         transition_seconds: rendered.transitionSeconds,
         media_generation: rendered.mediaGeneration,
+        content_quality: rendered.contentQuality,
       };
     }
     await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 94);

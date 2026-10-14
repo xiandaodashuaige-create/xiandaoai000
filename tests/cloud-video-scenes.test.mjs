@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { copyFor, renderWorkdirFor, sceneStarts, selectSceneSources, sparseStoryboardForSingleSource } from '../api/_cloud-video.mjs';
+import { copyFor, renderWorkdirFor, sceneStarts, selectSceneSources, sourceLedRemixPlan, sparseStoryboardForSingleSource } from '../api/_cloud-video.mjs';
 
 const visual = (name, role, extra = {}) => ({ name, role, type: 'video/mp4', ...extra });
 
@@ -70,4 +70,43 @@ test('one visual source gets a short sparse layout instead of five competing UI 
     { ...one, localPath: '/tmp/a.mp4' }, { ...one, localPath: '/tmp/b.mp4' },
   ]);
   assert.equal(many.applied, false);
+});
+
+test('customer remix keeps the original hook, customer middle and original CTA without generated overlays', () => {
+  const inputs = [
+    visual('hook-b.mp4', 'viral_hook', { speaker_id: 'owner-1', segment_duration: 3 }),
+    visual('hook-a.mp4', 'viral_hook', { speaker_id: 'owner-1', segment_duration: 3 }),
+    visual('process.mp4', 'process', { speaker_id: 'owner-1', preserve_audio: true, sequence: 1 }),
+    visual('trust.mp4', 'trust_proof', { speaker_id: 'someone-else', preserve_audio: true, sequence: 2 }),
+    visual('ending.mp4', 'customer_cta', { speaker_id: 'owner-1' }),
+  ];
+  const first = sourceLedRemixPlan({ id: 'job-1', variant_seed: 'fixed-7' }, inputs);
+  const again = sourceLedRemixPlan({ id: 'job-2', variant_seed: 'fixed-7' }, [...inputs].reverse());
+  assert.equal(first.contract.hookSource, again.contract.hookSource);
+  assert.equal(first.contract.textMode, 'preserve_source_no_generated_overlay');
+  assert.equal(first.contract.ctaMode, 'customer_original');
+  assert.ok(first.scenes.every((scene) => scene.template === 'source_native'));
+  assert.equal(first.scenes[0].audioMode, 'anchor');
+  assert.equal(first.scenes[1].audioMode, 'silent');
+  assert.equal(first.scenes[2].audioMode, 'silent');
+  assert.match(first.warnings.join(','), /secondary_source_audio_muted/);
+});
+
+test('customer remix uses only a simple WhatsApp CTA when no original CTA exists', () => {
+  const plan = sourceLedRemixPlan({ id: 'job-cta' }, [
+    visual('hook.mp4', 'customer_hook'),
+    visual('service.mp4', 'service_value'),
+  ]);
+  assert.equal(plan.scenes.at(-1).template, 'clean_cta');
+  assert.equal(plan.scenes.at(-1).title, '');
+  assert.match(plan.scenes.at(-1).button, /WhatsApp/);
+  assert.equal(plan.contract.ctaMode, 'simple_whatsapp_fallback');
+  assert.equal(plan.contract.voiceIdentity, 'continuous_from_hook_source');
+});
+
+test('customer remix refuses to fabricate a middle section without customer material', () => {
+  assert.throws(
+    () => sourceLedRemixPlan({ id: 'job-empty' }, [visual('hook.mp4', 'viral_hook')]),
+    /remix_missing_customer_middle_material/,
+  );
 });
