@@ -234,6 +234,14 @@ async function runOne(accessCode, mediaEnv = process.env) {
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (job.workflow_mode === 'ai_hybrid') {
+      await rpc('video_agent_worker_update', {
+        p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 100,
+        p_stage: 'AI 视频生成失败，未回退到普通素材混剪', p_output_files: [],
+        p_error_message: message,
+      });
+      return { ok: false, claimed: true, job_id: job.id, fallback: null, error: message };
+    }
     await rpc('video_agent_cloud_fallback', { p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER, p_error_message: message });
     return { ok: false, claimed: true, job_id: job.id, fallback: 'local', error: message };
   }
@@ -242,7 +250,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
 export default async function handler(req, res) {
   const oidcToken = String(req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN || '');
   const mediaEnv = oidcToken ? { ...process.env, VERCEL_OIDC_TOKEN: oidcToken } : process.env;
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'cloud_canary_with_local_fallback' });
+  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'ai_hybrid_fail_closed' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });

@@ -118,19 +118,40 @@ test('Seedance creates, polls and downloads a vertical clip', async () => {
   assert.equal(result.provider, 'seedance');
 });
 
-test('AI Hybrid fills missing hook and CTA with GPT images when video is not configured', async () => {
-  const fixture = await sharp({ create: { width: 1088, height: 1360, channels: 3, background: '#2c7257' } }).webp().toBuffer();
-  const workdir = await mkdtemp(path.join(tmpdir(), 'ai-assets-'));
-  try {
-    const result = await prepareAiHybridAssets({
-      job: { workflow_mode: 'ai_hybrid', brief: '业务主题：美容院' }, downloadedInputs: [], workdir,
+test('AI Hybrid fails closed when only still-image generation is configured', async () => {
+  await assert.rejects(
+    prepareAiHybridAssets({
+      job: { workflow_mode: 'ai_hybrid', brief: '业务主题：美容院' }, downloadedInputs: [], workdir: '/tmp',
       scenes: [{ title: 'Hook', seconds: 3 }, { title: 'CTA', seconds: 5 }],
       env: { AI_MEDIA_GENERATION_ENABLED: 'true', OPENAI_API_KEY: 'test-key' },
-      fetcher: async () => json({ data: [{ b64_json: fixture.toString('base64') }] }),
+    }),
+    /ai_video_provider_not_configured/,
+  );
+});
+
+test('AI Hybrid records provider, model, task id and checksum for generated video clips', async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'ai-video-assets-'));
+  let created = 0;
+  try {
+    const result = await prepareAiHybridAssets({
+      job: { workflow_mode: 'ai_hybrid', brief: '业务主题：香港美容院同区新客获取合作' },
+      downloadedInputs: [{ role: 'case_proof', type: 'video/mp4', localPath: '/tmp/proof.mp4' }],
+      workdir,
+      scenes: [{ title: 'Hook', seconds: 5 }, { title: 'CTA', seconds: 5 }],
+      env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'test-key' },
+      sleeper: async () => {},
+      fetcher: async (url) => {
+        if (url.endsWith('/v1/text_to_video')) return json({ id: `task-${++created}` });
+        if (url.includes('/v1/tasks/task-')) return json({ status: 'SUCCEEDED', output: [`https://cdn.example.com/${url.split('/').at(-1)}.mp4`] });
+        if (url.startsWith('https://cdn.example.com/')) return video();
+        throw new Error(`unexpected ${url}`);
+      },
     });
-    assert.deepEqual(result.inputs.map((item) => item.role), ['ai_hook', 'ai_cta']);
-    assert.ok((await readFile(result.inputs[0].localPath)).length > 100);
-    assert.deepEqual(result.generation.map((item) => item.provider), ['openai', 'openai']);
+    assert.deepEqual(result.inputs.map((item) => item.role), ['case_proof', 'ai_hook', 'ai_cta']);
+    assert.deepEqual(result.generation.map((item) => item.provider), ['runway', 'runway']);
+    assert.deepEqual(result.generation.map((item) => item.task_id), ['task-1', 'task-2']);
+    assert.ok(result.generation.every((item) => /^[a-f0-9]{64}$/.test(item.sha256)));
+    assert.ok((await readFile(result.inputs[1].localPath)).length > 1000);
   } finally { await rm(workdir, { recursive: true, force: true }); }
 });
 
@@ -141,7 +162,7 @@ test('AI Hybrid never pretends uploaded remix footage was generated', async () =
       downloadedInputs: [{ role: 'case_proof', type: 'video/mp4', localPath: '/tmp/proof.mp4' }],
       scenes: [{ title: 'Hook' }, { title: 'CTA' }], workdir: '/tmp', env: {},
     }),
-    /ai_media_provider_not_configured/,
+    /ai_video_provider_not_configured/,
   );
 });
 
@@ -174,4 +195,6 @@ test('capability endpoint separates installed adapters from configured providers
   assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'\]/);
   assert.match(worker, /req\.headers\['x-vercel-oidc-token'\]/);
   assert.match(worker, /providers: mediaProviderCapabilities\(mediaEnv\)/);
+  assert.match(worker, /AI 视频生成失败，未回退到普通素材混剪/);
+  assert.match(worker, /mode: 'ai_hybrid_fail_closed'/);
 });

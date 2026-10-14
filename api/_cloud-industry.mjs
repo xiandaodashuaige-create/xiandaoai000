@@ -32,16 +32,28 @@ export function isEnglishJob(job) {
   return /^en/i.test(String(job?.language || job?.locale || '')) || isEnglishBrief(job);
 }
 
+function positiveIntentText(job) {
+  const raw = [job?.brief || '', job?.revision_prompt || ''].join('\n');
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const negativeLabel = /^(?:[-*]\s*)?(?:禁止出现|禁止內容|禁止内容|不得出现|不要出现|必须排除|必須排除|排除项|排除項|must[_ -]?exclude|negative constraints?)\s*[：:]/i;
+  const positiveLines = lines.filter((line) => !negativeLabel.test(line));
+  const businessLabel = /^(?:[-*]\s*)?(?:业务主题|業務主題|业务类型|業務類型|项目类型|項目類型|business[_ -]?type|campaign(?: theme)?)\s*[：:]/i;
+  const explicitBusiness = positiveLines.filter((line) => businessLabel.test(line));
+  return (explicitBusiness.length ? explicitBusiness : positiveLines).join(' ');
+}
+
 export function inferIntent(job) {
-  const text = [job?.brief || '', job?.revision_prompt || ''].join(' ');
+  // Only classify positive business instructions. A phrase such as
+  // "禁止出现：按摩" is a constraint, not evidence that the job is massage.
+  const text = positiveIntentText(job);
   const rules = [
+    { type: 'ad_service', re: /(AI.{0,4}(廣告|广告)|(廣告|广告).{0,4}AI|廣告代投|广告代投|Meta.{0,4}代投|投放合作|鹿聯|鹿联|廣告員工|广告员工|同區新客|同区新客|新客獲取|新客获取|獲客|获客|客戶增長|客户增长|營銷代運營|营销代运营)/i },
     { type: 'massage', re: /(按摩|推拿|肩頸|肩颈|足療|足疗|SPA|spa|放鬆|放松|頭療|头疗|按摩體驗|按摩体验)/i },
     { type: 'smp', re: /(SMP|紋髮|纹发|髮際線|发际线|頭皮紋|头皮纹|半永久紋髮|半永久纹发)/i },
     { type: 'nail', re: /(美甲|甲油|gel甲|Gel甲)/i },
     { type: 'lash', re: /(美睫|睫毛|植睫|嫁接睫毛)/i },
     { type: 'facial', re: /(美容護理|美容护理|Facial|facial|皮膚管理|皮肤管理|面部護理|面部护理)/i },
     { type: 'hair', re: /(美髮|美发|髮型|发型|染髮|染发|剪髮|剪发)/i },
-    { type: 'ad_service', re: /(AI.{0,4}(廣告|广告)|(廣告|广告).{0,4}AI|廣告代投|广告代投|Meta.{0,4}代投|投放合作|鹿聯|鹿联|廣告員工|广告员工)/i },
   ];
   for (const rule of rules) if (rule.re.test(text)) return rule.type;
   return 'generic_service';

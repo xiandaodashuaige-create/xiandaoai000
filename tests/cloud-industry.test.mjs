@@ -23,6 +23,19 @@ test('revision prompt can also carry the industry signal, as in the local worker
   assert.equal(inferIntent({ brief: '', revision_prompt: '改成美甲' }), 'nail');
 });
 
+test('negative constraints never override the explicit business intent', () => {
+  assert.equal(inferIntent(brief('业务主题：香港美容院同区新客获取合作\n禁止出现：按摩、推拿、SPA')), 'ad_service');
+  assert.equal(inferIntent(brief('业务类型：香港美业AI获客服务\nmust_exclude: massage, spa')), 'ad_service');
+  assert.equal(inferIntent(brief('业务主题：肩颈按摩\n禁止出现：广告代投')), 'massage');
+});
+
+test('local worker carries the same negative-constraint guard', () => {
+  const source = readFileSync(new URL('../worker/video_agent_worker.mjs', import.meta.url), 'utf8');
+  assert.match(source, /function positiveIntentText/);
+  assert.match(source, /must\[_ -\]\?exclude/);
+  assert.ok(source.indexOf("type:'ad_service'") < source.indexOf("type:'massage'"));
+});
+
 test('every industry has the copy the local worker uses', () => {
   for (const type of Object.keys(INTENT_COPY)) {
     const copy = intentCopy(type, 1);
