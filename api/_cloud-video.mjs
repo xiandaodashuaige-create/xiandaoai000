@@ -167,14 +167,23 @@ export async function overlayPng(scene, output) {
     const offer = await text(line1, px(540), px(60), '#3a2a10', 900, 'centre');
     const action = await text(line2, px(460), px(34), '#f6e7b5', 800, 'centre');
     const label = await text(scene.button || 'WhatsApp 預約', px(380), px(36), '#ffffff', 800, 'centre');
-    shapes.push(`<rect x="${px(70)}" y="${px(430)}" width="${px(580)}" height="${px(290)}" rx="${px(36)}" fill="url(#gold)"/>`);
-    if (offer) composites.push({ input: offer.image, top: px(480), left: px(90) });
+    // Stack offer, pill and button from the measured text height so a wrapped
+    // offer line never runs underneath the pill (was clipping "S$98").
+    const offerTop = px(470);
+    const pillH = px(72);
+    const buttonH = px(92);
+    const pillTop = Math.max(px(600), offerTop + (offer ? offer.height : 0) + px(14));
+    const cardTop = px(430);
+    const cardBottom = pillTop + pillH + px(24);
+    const buttonTop = cardBottom + px(40);
+    shapes.push(`<rect x="${px(70)}" y="${cardTop}" width="${px(580)}" height="${cardBottom - cardTop}" rx="${px(36)}" fill="url(#gold)"/>`);
+    if (offer) composites.push({ input: offer.image, top: offerTop, left: px(90) });
     if (action) {
-      shapes.push(`<rect x="${px(110)}" y="${px(600)}" width="${px(500)}" height="${px(72)}" rx="${px(36)}" fill="#1f1606"/>`);
-      composites.push({ input: action.image, top: px(600) + Math.round((px(72) - action.height) / 2), left: px(130) });
+      shapes.push(`<rect x="${px(110)}" y="${pillTop}" width="${px(500)}" height="${pillH}" rx="${px(36)}" fill="#1f1606"/>`);
+      composites.push({ input: action.image, top: pillTop + Math.round((pillH - action.height) / 2), left: px(130) });
     }
-    shapes.push(`<rect x="${px(150)}" y="${px(760)}" width="${px(420)}" height="${px(92)}" rx="${px(46)}" fill="#25d366"/>`);
-    if (label) composites.push({ input: label.image, top: px(760) + Math.round((px(92) - label.height) / 2), left: px(170) });
+    shapes.push(`<rect x="${px(150)}" y="${buttonTop}" width="${px(420)}" height="${buttonH}" rx="${px(46)}" fill="#25d366"/>`);
+    if (label) composites.push({ input: label.image, top: buttonTop + Math.round((buttonH - label.height) / 2), left: px(170) });
   }
 
   // Main title: centred, bold, with a dark shadow for legibility.
