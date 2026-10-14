@@ -78,3 +78,11 @@ export async function resolveVoiceover({ uploadedVoice, job, scenes, outputPath,
     ? { voice: result.path, voiceSource: 'tts', voiceError: null }
     : { voice: null, voiceSource: 'none', voiceError: result.reason };
 }
+
+// Local worker rule: a scene lasts at least its template time, and at least
+// its own voiceover plus a short tail (6.8s voice -> 7.1s scene).
+export const VOICE_TAIL_SECONDS = 0.3;
+export function fitSecondsToVoice(baseSeconds, voiceSeconds) {
+  if (!(voiceSeconds > 0)) return baseSeconds;
+  return Math.max(baseSeconds, Math.round((voiceSeconds + VOICE_TAIL_SECONDS) * 10) / 10);
+}
