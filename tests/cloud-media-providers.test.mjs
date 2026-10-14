@@ -158,6 +158,38 @@ test('Vercel AI Gateway submits a reference-to-video job with OIDC and provenanc
   assert.match(result.sha256, /^[a-f0-9]{64}$/);
 });
 
+test('Vercel AI Gateway production path uses the current video generation REST endpoint', async () => {
+  const calls = [];
+  const result = await generateAiVideoClip({
+    prompt: 'same spokesperson in a Hong Kong salon',
+    negativePrompt: 'identity drift, text',
+    duration: 5,
+    referenceImage: { data: Buffer.alloc(2048, 4), type: 'image/jpeg' },
+    idempotencyKey: 'v3-rest-hook',
+    env: {
+      AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'vercel-ai-gateway',
+      VERCEL_OIDC_TOKEN: 'oidc-token', AI_GATEWAY_VIDEO_MODEL: 'klingai/kling-v3.0-i2v',
+    },
+    fetcher: async (url, init = {}) => {
+      calls.push({ url, init });
+      if (url === 'https://ai-gateway.vercel.sh/v1/video/generate') {
+        return json({ result: { videos: [{ type: 'url', url: 'https://cdn.example.com/gateway.mp4', mediaType: 'video/mp4' }], providerMetadata: { gateway: { asyncJob: { jobId: 'gateway-rest-job' } } } } });
+      }
+      if (url === 'https://cdn.example.com/gateway.mp4') return video();
+      throw new Error(`unexpected ${url}`);
+    },
+  });
+  const body = JSON.parse(calls[0].init.body);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer oidc-token');
+  assert.equal(calls[0].init.headers['ai-gateway-auth-method'], 'oidc');
+  assert.equal(calls[0].init.headers['idempotency-key'], 'v3-rest-hook');
+  assert.equal(body.model, 'klingai/kling-v3.0-i2v');
+  assert.match(body.prompt.image, /^data:image\/jpeg;base64,/);
+  assert.equal(body.prompt.text, 'same spokesperson in a Hong Kong salon');
+  assert.equal(result.taskId, 'gateway-rest-job');
+  assert.equal(result.data.length, 2048);
+});
+
 test('Gateway image-to-video model fails before spending when character reference is absent', async () => {
   await assert.rejects(
     generateAiVideoClip({
