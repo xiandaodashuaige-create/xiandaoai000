@@ -7,6 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
+import { posterBrief, preparePosterSource } from './_poster-brief.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -108,7 +109,7 @@ async function ensureFont() {
   return FONT_PATH;
 }
 
-async function textLayer(text, fontFile, size, width, color = '#ffffff', weight = 700) {
+async function textLayer(text, fontFile, size, width, color = '#ffffff', weight = 700, align = 'left') {
   return sharp({
     text: {
       text: `<span foreground="${color}" font_weight="${weight}">${xml(text)}</span>`,
@@ -118,55 +119,50 @@ async function textLayer(text, fontFile, size, width, color = '#ffffff', weight 
       rgba: true,
       wrap: 'word-char',
       spacing: Math.round(size * 0.22),
+      align,
     },
   }).png().toBuffer();
 }
 
 export async function renderPoster(job, input) {
   const font = await ensureFont();
-  const brief = String(job.brief || '');
-  const size = briefValue(brief, '尺寸', '1080x1350').match(/(\d+)x(\d+)/i);
-  const width = Math.max(640, Math.min(2160, Number(size?.[1] || 1080)));
-  const height = Math.max(640, Math.min(2160, Number(size?.[2] || 1350)));
+  const { width, height, title, facts, cta, brand, palette } = posterBrief(job);
   const margin = Math.round(width * 0.075);
   const contentWidth = width - margin * 2;
-  const title = briefValue(brief, '主标题', job.project_name || '营销海报');
-  const facts = briefValue(brief, '核心卖点与准确事实', briefValue(brief, '准确价格/优惠/事实', ''));
-  const cta = briefValue(brief, '行动引导', '立即了解');
-  const brand = briefValue(brief, '品牌', briefValue(brief, '客户', 'LULIAN AI'));
-
   const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.92, saturation: 0.96 }).toBuffer();
-  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#02140d" stop-opacity=".18"/><stop offset=".46" stop-color="#03120c" stop-opacity=".14"/><stop offset="1" stop-color="#020b07" stop-opacity=".92"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
-  const brandBg = Buffer.from(`<svg width="${Math.round(width * .44)}" height="66" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="33" fill="#28d57e"/></svg>`);
-  const ctaWidth = Math.min(contentWidth, Math.max(Math.round(width * .52), 500));
-  const ctaBg = Buffer.from(`<svg width="${ctaWidth}" height="92" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="46" fill="#28d57e"/></svg>`);
+  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${palette.shade}" stop-opacity="${palette.layout === 'top' ? '.85' : '.18'}"/><stop offset=".5" stop-color="${palette.shade}" stop-opacity=".12"/><stop offset="1" stop-color="${palette.shade}" stop-opacity=".92"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  // Measure every text block and shrink within a fixed budget. Never clip copy.
+  const fitText = async (value, ratio, maxHeight, color, weight = 700, align = 'left') => {
+    if (!value) return null;
+    for (let size = Math.round(width * ratio); size >= Math.round(width * .022); size -= 2) {
+      const data = await textLayer(value, font, size, contentWidth, color, weight, align);
+      const meta = await sharp(data).metadata();
+      if (meta.height <= maxHeight && meta.width <= contentWidth) return { data, height: meta.height, width: meta.width };
+    }
+    throw new Error('poster_copy_does_not_fit');
+  };
   const [brandText, titleText, factText, ctaText] = await Promise.all([
-    textLayer(brand.slice(0, 28), font, Math.round(width * .032), Math.round(width * .37), '#ffffff', 700),
-    textLayer(title, font, Math.round(width * .072), contentWidth, '#ffffff', 800),
-    textLayer(facts.replaceAll('｜', ' · '), font, Math.round(width * .039), contentWidth, '#e2f4ea', 400),
-    textLayer(cta, font, Math.round(width * .041), ctaWidth - 72, '#021b0f', 800),
+    fitText(brand, .032, height * .065, palette.text),
+    fitText(title.replace(/[｜|]/g, '\n').replace(/([\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, '$1\n'), .072, height * .24, palette.text, 800),
+    fitText(facts.replaceAll('｜', ' · '), .039, height * .16, palette.detail, 400),
+    fitText(cta, .041, height * .09, palette.ink, 800, 'centre'),
   ]);
-  const [titleMeta, factMeta, ctaMeta] = await Promise.all([sharp(titleText).metadata(), sharp(factText).metadata(), sharp(ctaText).metadata()]);
-  const titleTop = Math.max(Math.round(height * .49), height - Number(titleMeta.height || 130) - Number(factMeta.height || 70) - 230);
-  const factsTop = titleTop + Number(titleMeta.height || 130) + 28;
-  const ctaTop = Math.min(height - 120, factsTop + Number(factMeta.height || 70) + 36);
-
-  return sharp(base).composite([
-    { input: shade, top: 0, left: 0 },
-    { input: brandBg, top: Math.round(height * .065), left: margin },
-    { input: brandText, top: Math.round(height * .065) + 13, left: margin + 24 },
-    { input: titleText, top: titleTop, left: margin },
-    { input: factText, top: factsTop, left: margin },
-    { input: ctaBg, top: ctaTop, left: margin },
-    { input: ctaText, top: ctaTop + Math.max(10, Math.round((92 - Number(ctaMeta.height || 50)) / 2)), left: margin + 36 },
-  ]).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
-}
-
-function posterGenerationPrompt(job) {
-  const title = briefValue(job.brief, '主标题', job.project_name || '营销海报');
-  const facts = briefValue(job.brief, '核心卖点与准确事实', '');
-  const brand = briefValue(job.brief, '品牌', '');
-  return `Create a premium commercial advertising background image for ${brand}. Campaign theme: ${title}. Confirmed context: ${facts}. Photorealistic, polished studio lighting, natural anatomy, strong focal subject, vertical social-ad composition, clean negative space in the lower half for later typography. Do not render words, letters, numbers, prices, logos, watermarks, UI, QR codes, or captions.`;
+  const gap = Math.round(height * .022);
+  const ctaPadding = Math.round(height * .015);
+  const ctaHeight = (ctaText?.height || 0) + ctaPadding * 2;
+  const ctaTop = height - margin - ctaHeight;
+  const ctaBg = Buffer.from(`<svg width="${contentWidth}" height="${ctaHeight}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="${Math.round(ctaHeight / 2)}" fill="${palette.accent}"/></svg>`);
+  const blockHeight = (titleText?.height || 0) + (factText?.height || 0) + gap;
+  const brandTop = margin;
+  const titleTop = palette.layout === 'top' ? brandTop + (brandText?.height || 0) + gap * 2 : ctaTop - gap * 2 - blockHeight;
+  const factsTop = titleTop + (titleText?.height || 0) + gap;
+  if (titleTop < margin || factsTop + (factText?.height || 0) > ctaTop - gap) throw new Error('poster_copy_does_not_fit');
+  const composites = [{ input: shade, top: 0, left: 0 }];
+  if (brandText) composites.push({ input: brandText.data, top: brandTop, left: margin });
+  if (titleText) composites.push({ input: titleText.data, top: titleTop, left: margin });
+  if (factText) composites.push({ input: factText.data, top: factsTop, left: margin });
+  if (ctaText) composites.push({ input: ctaBg, top: ctaTop, left: margin }, { input: ctaText.data, top: ctaTop + ctaPadding, left: margin + Math.floor((contentWidth - ctaText.width) / 2) });
+  return sharp(base).composite(composites).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
 async function heartbeat(accessCode, jobId, stage, progress) {
@@ -184,16 +180,15 @@ async function runOne(accessCode, mediaEnv = process.env) {
     let contentType;
     let artifactMeta = {};
     if (job.workflow_mode === 'image_poster') {
-      let source;
-      if (main?.path) {
-        await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
-        source = await posterSource(main, job.id);
-      } else {
-        await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
-        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), env: mediaEnv });
-        source = generated.data;
-        artifactMeta = { generated_background: true, image_provider: generated.provider, image_model: generated.model, source_sha256: generated.sha256 };
-      }
+      await heartbeat(accessCode, job.id, '云端正在准备海报主视觉与参考风格', 18);
+      const prepared = await preparePosterSource({
+        job, main: main?.path ? main : null,
+        references: inputs.filter(item => item.role === 'reference'),
+        load: item => posterSource(item, job.id),
+        generate: args => generateOpenAiImage({ ...args, env: mediaEnv }),
+      });
+      const source = prepared.source;
+      artifactMeta = { ...prepared.metadata, copy_rendering: 'typeset_from_confirmed_brief', visual_review: 'required' };
       await heartbeat(accessCode, job.id, '云端正在生成商业海报', 52);
       result = await renderPoster(job, source);
       fileName = 'poster-cloud.jpg';
@@ -234,6 +229,15 @@ async function runOne(accessCode, mediaEnv = process.env) {
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // The local renderer does not consume style references. A poster error
+    // must remain visible instead of quietly returning an unrelated template.
+    if (job.workflow_mode === 'image_poster') {
+      await rpc('video_agent_worker_update', {
+        p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 0,
+        p_stage: '海报未完成，请查看错误后重试', p_output_files: [], p_error_message: message,
+      });
+      return { ok: false, claimed: true, job_id: job.id, error: message };
+    }
     await rpc('video_agent_cloud_fallback', { p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER, p_error_message: message });
     return { ok: false, claimed: true, job_id: job.id, fallback: 'local', error: message };
   }
@@ -252,4 +256,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 }
-
