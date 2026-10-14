@@ -226,6 +226,11 @@ test('AI Hybrid sends the same character reference to hook and CTA gateway jobs'
     assert.deepEqual(result.generation.map((item) => item.character_reference_used), [true, true]);
     assert.deepEqual(result.generation.map((item) => item.task_id), ['gateway-1', 'gateway-2']);
     assert.match(requests[0].providerOptions.klingai.negativePrompt, /禁止出现：按摩、疗程操作/);
+    assert.match(requests[0].prompt.text, /entire head, shoulders, and upper torso visible/);
+    assert.match(requests[0].prompt.text, /no tilt, orbit, push-in, extreme close-up, selfie angle, or camera shake/);
+    assert.match(requests[1].prompt.text, /lower forty percent visually quiet and empty/);
+    assert.match(requests[1].prompt.text, /No other person may enter or overlap the frame/);
+    assert.match(requests[1].providerOptions.klingai.negativePrompt, /forehead-only framing/);
     assert.notEqual(requests[0].headers['idempotency-key'], requests[1].headers['idempotency-key']);
   } finally { await rm(workdir, { recursive: true, force: true }); }
 });
