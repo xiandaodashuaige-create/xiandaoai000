@@ -41,6 +41,30 @@ test('requires full conversation scope for provider job creation', async () => {
   assert.deepEqual(res.body, { error: 'missing_conversation_session_id' });
 });
 
+test('publishes a non-secret V3 ads integration capability contract', async () => {
+  process.env.A3_VIDEO_PROVIDER_TOKEN = 'strong-a3-token';
+  process.env.VIDEO_AGENT_ACCESS = 'provider-secret';
+  process.env.SUPABASE_PUBLISHABLE_KEY = 'publishable-key';
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: {}, body: {} }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.service, 'v3-video-employee-provider');
+  assert.equal(res.body.integration_target, 'v3-ads-employee');
+  assert.equal(res.body.configured, true);
+  assert.ok(res.body.actions.includes('provider_record_feedback'));
+});
+
+test('rejects incomplete scoped action payloads before forwarding', async () => {
+  process.env.A3_VIDEO_PROVIDER_TOKEN = 'strong-a3-token';
+  const res = responseRecorder();
+  await handler({
+    method: 'POST', headers: { authorization: 'Bearer strong-a3-token' },
+    body: { action: 'provider_status', tenant_id: 'tenant-a', project_id: 'project-a' },
+  }, res);
+  assert.equal(res.code, 400);
+  assert.deepEqual(res.body, { error: 'missing_job_id' });
+});
+
 test('allows revision and acceptance actions through the scoped gateway', async () => {
   process.env.A3_VIDEO_PROVIDER_TOKEN = 'strong-a3-token';
   process.env.VIDEO_AGENT_ACCESS = 'provider-secret';
@@ -51,14 +75,15 @@ test('allows revision and acceptance actions through the scoped gateway', async 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   for (const body of [
-    { action: 'provider_create_revision', tenant_id: 'tenant-a', project_id: 'project-a', parent_job_id: 'job-a' },
+    { action: 'provider_create_revision', tenant_id: 'tenant-a', project_id: 'project-a', parent_job_id: 'job-a', revision_prompt: '强化前三秒 Hook' },
+    { action: 'provider_record_feedback', tenant_id: 'tenant-a', project_id: 'project-a', job_id: 'job-a', feedback_text: '字幕减少，不要挡脸' },
     { action: 'provider_accept_job', tenant_id: 'tenant-a', project_id: 'project-a', job_id: 'job-b' },
   ]) {
     const res = responseRecorder();
     await handler({ method: 'POST', headers: { authorization: 'Bearer strong-a3-token' }, body }, res);
     assert.equal(res.code, 200);
   }
-  assert.deepEqual(actions, ['provider_create_revision', 'provider_accept_job']);
+  assert.deepEqual(actions, ['provider_create_revision', 'provider_record_feedback', 'provider_accept_job']);
 });
 
 test('forwards only scoped provider actions with the server secret', async () => {

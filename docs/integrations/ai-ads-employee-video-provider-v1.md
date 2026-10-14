@@ -1,6 +1,6 @@
 # AI 广告员工 × 视频工厂接入契约 V1
 
-状态：`PARTIAL`（现有内部视频工厂可运行；完成租户隔离前不可直接开放给广告员工客户）
+状态：`CONTRACT_READY_FOR_STAGING`（服务端租户隔离、幂等、签名上传下载、反馈、版本与 checksum 契约已具备；广告员工侧编排器和真实模型额度尚未完成联调，不能直接宣布 Production 可用）
 
 ## 目标
 
@@ -84,6 +84,8 @@ content-type: application/json
 | `accept_job` | 确认选中的视频版本 |
 | `download_url` | 获取短时结果下载地址 |
 
+广告员工服务端使用 `/api/a3-video-provider` 的 `provider_*` 对应动作。`GET /api/a3-video-provider` 返回非敏感的契约版本、工作流、动作清单及配置就绪状态，便于部署前健康检查；真实令牌仍只允许服务端保存。
+
 任务输出最多 3 个版本，最终视频为 `video/mp4`；任务是异步执行，当前消费者应轮询 `status`，不得把 HTTP 请求保持到渲染结束。
 
 ## 广告员工侧接入位置
@@ -120,7 +122,26 @@ content-type: application/json
 
 视频工厂不能自行推断价格、联系方式、客户案例、效果承诺或跨项目素材。
 
-## 正式接入前必须补齐
+## 正式接入准备度（2026-10-14）
+
+已在视频员工侧完成：
+
+- 外部 `tenant_id + project_id` 唯一映射与任务强制作用域；
+- `idempotency_key` 去重、`conversation_session_id`、`correlation_id` 传递；
+- 按作用域签发上传、提交、状态、下载、反馈、修订和接受动作；
+- 结果 SHA-256 绑定，未完成或无 checksum 的版本禁止接受；
+- V3 广告员工专用服务端网关、Bearer 认证、请求字段前置校验与能力发现接口；
+- Provider 故障与广告员工原图片/Meta 链路隔离。
+
+仍需在广告员工仓库及目标环境完成：
+
+- 注册 `ai_video_employee` 角色、五类视频意图与 guarded command bridge；
+- 配置广告员工服务端 Provider URL/令牌，Staging 单租户完成真实联调；
+- 将已接受 MP4 写入广告员工 `CreativeVersion` lineage 和审批快照；
+- 补取消/超时的产品交互，并完成 390px、刷新恢复和跨租户攻击验收；
+- 为 GPT Image / Runway / Seedance 配置可用付费额度和密钥，完成小额真实质量样本。
+
+## 正式接入前完整门禁
 
 当前内部 PoC 仍使用一个服务级令牌保护全部项目，因此只能由广告员工服务端调用。正式客户接入前完成：
 

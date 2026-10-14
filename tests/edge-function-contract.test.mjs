@@ -23,3 +23,16 @@ test('signed upload is issued only after the scoped job lookup succeeds', () => 
   assert.ok(providerBlock.indexOf('video_agent_provider_get_job') < providerBlock.indexOf('createSignedUploadUrl'));
   assert.match(providerBlock, /if \(scopeError \|\| !scopedJob\?\.id\).*404/);
 });
+
+test('provider feedback is tenant scoped before project memory is updated', () => {
+  const providerBlock = source.slice(
+    source.indexOf('if (action === "provider_record_feedback")'),
+    source.indexOf('if (action === "provider_accept_job")'),
+  );
+  assert.match(providerBlock, /video_agent_provider_get_job/);
+  assert.match(providerBlock, /video_agent_record_feedback/);
+  assert.ok(providerBlock.indexOf('video_agent_provider_get_job') < providerBlock.indexOf('video_agent_record_feedback'));
+  assert.match(providerBlock, /scopedJob\.video_project_id/);
+  assert.match(providerBlock, /p_content:\s*feedbackText/);
+  assert.match(providerBlock, /p_metadata:/);
+});

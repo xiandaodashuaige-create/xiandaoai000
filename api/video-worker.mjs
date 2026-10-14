@@ -1,8 +1,12 @@
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
+import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
+import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -11,6 +15,7 @@ const INPUT_BUCKET = 'video-agent-inputs';
 const RESULT_BUCKET = 'video-agent-results';
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
 const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
+const execFileAsync = promisify(execFile);
 
 function env(name) {
   const value = process.env[name];
@@ -59,6 +64,17 @@ async function downloadToTmp(item, index, jobId) {
   await mkdir(path.dirname(localPath), { recursive: true });
   await writeFile(localPath, await download(INPUT_BUCKET, item.path));
   return { ...item, localPath };
+}
+
+async function posterSource(main, jobId) {
+  const downloaded = await downloadToTmp(main, 0, jobId);
+  if (!String(main.type || '').startsWith('video/')) return readFile(downloaded.localPath);
+  const output = path.join('/tmp', `video-${jobId}`, 'poster-source.jpg');
+  await execFileAsync(ffmpegPath, [
+    '-y', '-loglevel', 'error', '-ss', '1', '-i', downloaded.localPath,
+    '-frames:v', '1', '-q:v', '2', output,
+  ]);
+  return readFile(output);
 }
 
 async function upload(bucket, objectPath, data, contentType) {
@@ -146,25 +162,38 @@ export async function renderPoster(job, input) {
   ]).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
+function posterGenerationPrompt(job) {
+  const title = briefValue(job.brief, '主标题', job.project_name || '营销海报');
+  const facts = briefValue(job.brief, '核心卖点与准确事实', '');
+  const brand = briefValue(job.brief, '品牌', '');
+  return `Create a premium commercial advertising background image for ${brand}. Campaign theme: ${title}. Confirmed context: ${facts}. Photorealistic, polished studio lighting, natural anatomy, strong focal subject, vertical social-ad composition, clean negative space in the lower half for later typography. Do not render words, letters, numbers, prices, logos, watermarks, UI, QR codes, or captions.`;
+}
+
 async function heartbeat(accessCode, jobId, stage, progress) {
   await rpc('video_agent_worker_heartbeat', { p_access: accessCode, p_job_id: jobId, p_worker_id: WORKER, p_stage: stage, p_progress: progress });
 }
 
-async function runOne(accessCode) {
+async function runOne(accessCode, mediaEnv = process.env) {
   const job = await rpc('video_agent_claim_cloud_job', { p_access: accessCode, p_worker_id: WORKER });
   if (!job?.id) return { ok: true, claimed: false };
   try {
     const inputs = Array.isArray(job.input_files) ? job.input_files : [];
-    const main = inputs.find((item) => item.role === 'main') || inputs[0];
-    if (!main?.path) throw new Error('missing_main_visual');
+    const main = inputs.find((item) => item.role === 'main');
     let result;
     let fileName;
     let contentType;
     let artifactMeta = {};
     if (job.workflow_mode === 'image_poster') {
-      if (String(main.type || '').startsWith('video/')) throw new Error('video_poster_source_requires_local_ffmpeg');
-      await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
-      const source = await download(INPUT_BUCKET, main.path);
+      let source;
+      if (main?.path) {
+        await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
+        source = await posterSource(main, job.id);
+      } else {
+        await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
+        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), env: mediaEnv });
+        source = generated.data;
+        artifactMeta = { generated_background: true, image_provider: generated.provider, image_model: generated.model, source_sha256: generated.sha256 };
+      }
       await heartbeat(accessCode, job.id, '云端正在生成商业海报', 52);
       result = await renderPoster(job, source);
       fileName = 'poster-cloud.jpg';
@@ -173,11 +202,22 @@ async function runOne(accessCode) {
       await heartbeat(accessCode, job.id, '云端正在下载项目隔离素材', 14);
       const downloaded = [];
       for (let index = 0; index < inputs.length; index += 1) downloaded.push(await downloadToTmp(inputs[index], index, job.id));
-      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress));
+      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress), { mediaEnv });
       result = rendered.data;
       fileName = 'creative-cloud.mp4';
       contentType = 'video/mp4';
-      artifactMeta = { duration_seconds: rendered.durationSeconds, width: rendered.width, height: rendered.height };
+      artifactMeta = {
+        duration_seconds: rendered.durationSeconds,
+        width: rendered.width,
+        height: rendered.height,
+        fps: rendered.quality?.fps,
+        bitrate_kbps: rendered.quality?.bitrateKbps,
+        loudness_lufs: rendered.quality?.loudnessLUFS,
+        true_peak_dbtp: rendered.quality?.truePeakDBTP,
+        voice_source: rendered.voiceSource,
+        voice_error: rendered.voiceError || undefined,
+        media_generation: rendered.mediaGeneration,
+      };
     }
     await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 94);
     const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: fileName });
@@ -200,11 +240,13 @@ async function runOne(accessCode) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], mode: 'cloud_canary_with_local_fallback' });
+  const oidcToken = String(req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN || '');
+  const mediaEnv = oidcToken ? { ...process.env, VERCEL_OIDC_TOKEN: oidcToken } : process.env;
+  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'cloud_canary_with_local_fallback' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });
-    const result = await runOne(env('VIDEO_AGENT_ACCESS'));
+    const result = await runOne(env('VIDEO_AGENT_ACCESS'), mediaEnv);
     return res.status(result.ok ? 200 : 202).json(result);
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
