@@ -201,13 +201,13 @@ export async function overlayPng(scene, output) {
   await sharp(svg).composite(composites).png().toFile(output);
 }
 
-export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0 }) {
+export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0, loop = false }) {
   const isImage = String(type || '').startsWith('image/');
   const hasAudio = !isImage && await sourceHasAudio(source);
   // Seek before the input so each scene starts at its own point in the footage.
   const input = isImage
     ? ['-loop', '1', '-framerate', String(FPS), '-i', source]
-    : (start > 0 ? ['-ss', start.toFixed(2), '-i', source] : ['-i', source]);
+    : [...(loop ? ['-stream_loop', '-1'] : []), ...(start > 0 ? ['-ss', start.toFixed(2)] : []), '-i', source];
   const audioInput = hasAudio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
   const overlayIndex = hasAudio ? 1 : 2;
   const baseFilter = isImage
@@ -337,7 +337,10 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
-    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: scenes[index].seconds ?? SEGMENT_SECONDS, start });
+    const wanted = scenes[index].seconds ?? SEGMENT_SECONDS;
+    // Short clips loop (as the local worker does) so the scene keeps its length.
+    const loop = !String(source.type || '').startsWith('image/') && durationBySource.get(source.localPath) < start + wanted;
+    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: wanted, start, loop });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }

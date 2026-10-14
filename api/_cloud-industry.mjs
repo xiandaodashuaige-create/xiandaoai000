@@ -207,17 +207,40 @@ export function voiceRulesFor(job) {
   return { english, voice, rate };
 }
 
-// English branch, copied from the local worker's englishScenes().
+// English branch. The local worker used generic English lines, which ignored
+// the brief's own ad copy. Here the brief's copy is used when it is present:
+// a question for the hook, the check-marked points for the pain beat, the
+// service name and description for the middle, the price for the offer.
+// Generic lines remain the fallback when the brief has no such copy.
+export function parseEnglishAdCopy(brief) {
+  const lines = String(brief || '').replaceAll('\\n', '\n').split('\n').map((line) => line.trim()).filter(Boolean);
+  const clean = (line) => line.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, '').trim();
+  const hook = lines.find((line) => line.includes('?') && /[A-Za-z]/.test(line));
+  const points = lines.filter((line) => line.startsWith('✅')).map(clean).slice(0, 3);
+  const serviceIndex = lines.findIndex((line) => line.startsWith('🔥') && !/S\$/.test(line));
+  const service = serviceIndex >= 0 ? clean(lines[serviceIndex]) : '';
+  const description = serviceIndex >= 0 ? lines.slice(serviceIndex + 1).find((line) => /[A-Za-z]/.test(line) && !/^[⏳📍💬✅🔥]/u.test(line)) || '' : '';
+  const price = (lines.join(' ').match(/S\$\s?\d+/) || [])[0];
+  const ask = lines.find((line) => line.startsWith('💬'));
+  return { hook, points, service, description, price, ask: ask ? clean(ask) : '' };
+}
+
 export function englishStoryboard(job) {
   const flags = revisionFlags(job);
   const seconds = flags.faster ? [2.6, 4, 4.8, 4.5, 4] : [3, 5, 6, 6, 5];
+  const copy = parseEnglishAdCopy(job?.brief);
   const business = (String(job?.brief || '').match(/业务类型[：:]([^\n]+)/)?.[1] || 'this service').trim();
+  const hook = copy.hook ? copy.hook.replace(/\?.*$/, '?') : 'Ready for a real change?';
+  const pain = copy.points.length ? copy.points : ['See the real process', 'Understand the value', 'Choose with confidence'];
+  const middleTitle = copy.service || 'Real process\nReal customer proof';
+  const middleSub = copy.description || 'Here is the real customer process, so you can see exactly what to expect.';
+  const offerLine = copy.price ? `First-time trial ${copy.price}` : 'Ready to get started?';
   const beats = [
-    { kicker: 'Hook', title: 'Ready for a real change?', subtitle: 'Ready to see what ' + business + ' can do for you?', vo: 'Ready to see what ' + business + ' can do for you?' },
-    { kicker: 'Process', title: 'See the real process', subtitle: 'Understand the value  ·  Choose with confidence', vo: 'See the real process, understand the value, and choose with confidence.' },
-    { kicker: 'Proof', title: 'Real process', subtitle: 'Real customer proof', vo: 'Here is the real customer process, so you can see exactly what to expect.' },
-    { kicker: 'WhatsApp', title: 'Hi, I would like to learn more.', subtitle: 'Can I book a time?', vo: 'Have a question? Message us directly on WhatsApp.' },
-    { kicker: 'Next step', title: 'Ready to get started?', subtitle: 'WhatsApp us now to learn more or book your place.', vo: 'Ready to get started? WhatsApp us now to learn more or book your place.' },
+    { template: 'big_text_hook', kicker: 'Hook', title: hook, subtitle: copy.service ? copy.service : 'Ready to see what ' + business + ' can do for you?', vo: [hook, copy.service || 'Ready to see what ' + business + ' can do for you?'].join(' ') },
+    { template: 'pain_cards', kicker: 'Points', cards: pain, title: '', subtitle: '', vo: pain.join('. ') + '.' },
+    { template: 'big_text_hook', kicker: 'Service', title: middleTitle, subtitle: middleSub, vo: middleSub },
+    { template: 'whatsapp_chat', kicker: 'WhatsApp', messages: ['Hi, I would like to learn more.', 'Can I book a time?'], title: '', subtitle: 'Have a question? Message us directly on WhatsApp.', vo: 'Have a question? Message us directly on WhatsApp.' },
+    { template: 'cta_offer', kicker: 'Next step', title: `${offerLine}\n${copy.ask ? 'WhatsApp to book' : 'WhatsApp us now'}`, button: 'WhatsApp us now', subtitle: copy.ask || 'WhatsApp us now to learn more or book your place.', vo: copy.ask || 'WhatsApp us now to learn more or book your place.' },
   ];
   return beats.map((beat, index) => ({ ...beat, seconds: seconds[index], showSubtitle: true }));
 }
