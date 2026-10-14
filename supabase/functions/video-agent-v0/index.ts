@@ -239,6 +239,29 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, job: data });
     }
 
+    if (action === "provider_record_feedback") {
+      const tenantId = String(body.tenant_id || "");
+      const projectId = String(body.project_id || "");
+      const jobId = String(body.job_id || "");
+      const feedbackText = String(body.feedback_text || "").trim();
+      if (!feedbackText) return json({ error: "missing_feedback_text" }, 400);
+      const { data: scopedJob, error: scopeError } = await sb.rpc("video_agent_provider_get_job", {
+        p_access: access, p_tenant_id: tenantId, p_external_project_id: projectId, p_job_id: jobId,
+      });
+      if (scopeError || !scopedJob?.id) return json({ error: errMsg(scopeError) }, 404);
+      const { data, error } = await sb.rpc("video_agent_record_feedback", {
+        p_access: access,
+        p_video_project_id: scopedJob.video_project_id,
+        p_job_id: jobId,
+        p_actor_id: String(body.actor_id || "v3_ads_employee"),
+        p_event_type: String(body.event_type || "project_note"),
+        p_feedback_text: feedbackText,
+        p_payload: body.payload && typeof body.payload === "object" ? body.payload : {},
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      return json({ ok: true, feedback: data });
+    }
+
     if (action === "provider_accept_job") {
       const tenantId = String(body.tenant_id || "");
       const projectId = String(body.project_id || "");
