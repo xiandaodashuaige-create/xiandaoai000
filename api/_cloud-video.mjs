@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
-import { resolveVoiceover, isEnglishJob } from './_cloud-tts.mjs';
+import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob } from './_cloud-tts.mjs';
 import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
 import sharp from 'sharp';
 
@@ -139,18 +139,23 @@ export async function overlayPng(scene, output) {
       y += h + px(22);
     }
   }
-  // WhatsApp chat: bubbles on a dark card so they read over any footage.
+  // WhatsApp chat: a phone frame with a chat screen, as in the local worker.
   if (template === 'whatsapp_chat') {
-    let y = px(540);
+    shapes.push(`<rect x="${px(130)}" y="${px(420)}" width="${px(460)}" height="${px(860)}" rx="${px(48)}" fill="#111111"/>`);
+    shapes.push(`<rect x="${px(146)}" y="${px(452)}" width="${px(428)}" height="${px(796)}" rx="${px(30)}" fill="#e5ddd5"/>`);
+    shapes.push(`<rect x="${px(146)}" y="${px(452)}" width="${px(428)}" height="${px(84)}" rx="${px(30)}" fill="#075e54"/>`);
+    const header = await text('新客人', px(300), px(34), '#ffffff', 700);
+    if (header) composites.push({ input: header.image, top: px(470), left: px(200) });
+    let y = px(580);
     for (const [index, message] of (scene.messages || []).entries()) {
-      const t = await text(message, px(440), px(30), index % 2 ? '#00130b' : '#0b1f16', 500);
+      const t = await text(message, px(290), px(28), index % 2 ? '#00130b' : '#111111', 500);
       if (!t) continue;
       const w = t.width + pad * 2;
       const h = t.height + pad * 2;
-      const left = index % 2 ? WIDTH - px(60) - w : px(60);
-      shapes.push(`<rect x="${left}" y="${y}" width="${w}" height="${h}" rx="${px(22)}" fill="${index % 2 ? '#25d366' : '#ffffff'}"/>`);
+      const left = index % 2 ? px(146) + px(428) - px(14) - w : px(160);
+      shapes.push(`<rect x="${left}" y="${y}" width="${w}" height="${h}" rx="${px(18)}" fill="${index % 2 ? '#dcf8c6' : '#ffffff'}"/>`);
       composites.push({ input: t.image, top: y + pad, left: left + pad });
-      y += h + px(20);
+      y += h + px(18);
     }
   }
   if (template === 'cta_offer' && scene.button) {
@@ -203,7 +208,7 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
   await run([
     '-y', ...input, ...audioInput, '-i', overlay,
     '-filter_complex', videoFilter, '-map', '[v]', '-map', audioMap,
-    '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-maxrate', '12M', '-bufsize', '24M',
+    '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '10', '-maxrate', '20M', '-bufsize', '40M',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2', output,
   ], path.dirname(output));
 }
@@ -255,6 +260,39 @@ export async function inspectRender(file, expectedDuration) {
   return metadata;
 }
 
+// Each scene is voiced on its own, as the local worker does. Its clip is
+// padded or trimmed to the scene length, then the clips are joined into one
+// track. Scene lengths grow to fit the voice. Any failure means no voice at
+// all, so a half-narrated video is never shipped.
+export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeoutMs }) {
+  const { voice, rate } = voiceFor(job);
+  const parts = [];
+  for (let index = 0; index < scenes.length; index += 1) {
+    const scene = scenes[index];
+    const base = scene.seconds ?? SEGMENT_SECONDS;
+    const raw = path.join(workdir, `vo-${index}.mp3`);
+    let voiceSeconds = 0;
+    if (scene.vo && scene.vo.trim()) {
+      const result = await synthesizeVoiceover({ text: scene.vo, voice, rate, outputPath: raw, synthesize, timeoutMs });
+      if (!result.ok) return { ok: false, reason: `scene_${index + 1}_${result.reason}` };
+      voiceSeconds = await sourceDuration(raw);
+    }
+    scene.seconds = fitSecondsToVoice(base, voiceSeconds);
+    const part = path.join(workdir, `vo-seg-${index}.wav`);
+    if (voiceSeconds > 0) {
+      await run(['-y', '-i', raw, '-af', 'apad', '-t', String(scene.seconds), '-ar', '48000', '-ac', '2', part], workdir);
+    } else {
+      await run(['-y', '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000', '-t', String(scene.seconds), part], workdir);
+    }
+    parts.push(part);
+  }
+  const list = path.join(workdir, 'vo-concat.txt');
+  await writeFile(list, parts.map((file) => `file '${file.replaceAll("'", "'\\''")}'`).join('\n'));
+  const track = path.join(workdir, 'voiceover-track.wav');
+  await run(['-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'pcm_s16le', track], workdir);
+  return { ok: true, path: track };
+}
+
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}) {
   const workdir = path.join('/tmp', `video-${job.id}`);
   await rm(workdir, { recursive: true, force: true });
@@ -264,9 +302,18 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const uploadedVoice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = downloadedInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   const scenes = copyFor(job);
-  const { voice, voiceSource, voiceError } = await resolveVoiceover({
-    uploadedVoice, job, scenes, outputPath: path.join(workdir, 'voiceover-tts.mp3'),
-  });
+  let voice = uploadedVoice || null;
+  let voiceSource = uploadedVoice ? 'uploaded' : 'none';
+  let voiceError = null;
+  if (!uploadedVoice) {
+    const timed = await renderVoiceTrack({ job, scenes, workdir });
+    if (timed.ok) {
+      voice = timed.path;
+      voiceSource = 'tts';
+    } else {
+      voiceError = timed.reason;
+    }
+  }
   const segments = [];
   const sourceSeconds = await sourceDuration(visual[0].localPath);
   const starts = sceneStarts(sourceSeconds, scenes);
