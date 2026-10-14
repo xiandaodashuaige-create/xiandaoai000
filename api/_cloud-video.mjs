@@ -14,7 +14,7 @@ const K = WIDTH / 720;
 const px = (value) => Math.round(value * K);
 // Social-platform loudness target; the final pass normalises every render to it.
 const LOUDNESS = { I: -14, TP: -1.5, LRA: 11 };
-const FPS = 25;
+const FPS = 30; // local worker renders 30fps
 const SEGMENT_SECONDS = 5;
 const MIN_VIDEO_KBPS = 800;
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
@@ -43,6 +43,15 @@ async function sourceDuration(file) {
   } catch (error) {
     return parseDuration(error);
   }
+}
+
+// Same start points as the local worker: 3%, 22%, 42%, 61%, 78% of the clip.
+export function sceneStarts(duration, scenes) {
+  return scenes.map((scene, index) => {
+    const x = [0.03, 0.22, 0.42, 0.61, 0.78][index % 5];
+    const latest = Math.max(0, duration - (scene.seconds ?? SEGMENT_SECONDS) - 0.2);
+    return duration > 0 ? Math.min(latest, duration * x) : 0;
+  });
 }
 
 async function sourceHasAudio(file) {
@@ -92,9 +101,9 @@ async function ensureFont() {
   return FONT_PATH;
 }
 
-function textImage(text, fontFile, width, fontSize, color, weight = 700) {
+function textImage(text, fontFile, width, fontSize, color, weight = 700, align = 'left') {
   const escaped = String(text || '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&apos;' })[char]);
-  return sharp({ text: { text: `<span foreground="${color}" font_weight="${weight}">${escaped}</span>`, font: `Noto Sans SC ${fontSize}`, fontfile: fontFile, width, rgba: true, wrap: 'word-char', spacing: Math.round(fontSize * .16), align: 'left' } })
+  return sharp({ text: { text: `<span foreground="${color}" font_weight="${weight}">${escaped}</span>`, font: `Noto Sans SC ${fontSize}`, fontfile: fontFile, width, rgba: true, wrap: 'word-char', spacing: Math.round(fontSize * .16), align } })
     .png()
     .toBuffer();
 }
@@ -107,74 +116,83 @@ export async function overlayPng(scene, output) {
   const template = scene.template || 'big_text_hook';
   const shapes = [];
   const composites = [];
-  const pad = px(26);
-  const text = async (value, width, size, color, weight) => {
+  const pad = px(24);
+  const text = async (value, width, size, color, weight, align = 'left') => {
     if (!value) return null;
-    const image = await textImage(value, fontFile, width, size, color, weight);
+    const image = await textImage(value, fontFile, width, size, color, weight, align);
     const meta = await sharp(image).metadata();
     return { image, width: meta.width || 0, height: meta.height || 0 };
   };
-  const rect = (x, y, w, h, rx, fill, extra = '') =>
-    shapes.push(`<rect x="${px(x)}" y="${px(y)}" width="${px(w)}" height="${px(h)}" rx="${px(rx)}" fill="${fill}" ${extra}/>`);
 
-  let y = 0;
+  // Pain cards: white cards with a red cross, as in the local worker.
   if (template === 'pain_cards') {
-    y = px(470);
+    let y = px(520);
     for (const card of scene.cards || []) {
-      const t = await text(card, px(560), px(34), '#ffffff', 700);
+      const t = await text(card, px(500), px(36), '#1a1a1a', 700);
       if (!t) continue;
-      const h = t.height + pad * 2;
-      rect(48, y / K, 624, h / K, 22, '#ffffff', 'fill-opacity=".14" stroke="#21d17d" stroke-width="' + px(3) + '"');
-      composites.push({ input: t.image, top: y + pad, left: px(48) + pad });
-      y += h + px(24);
+      const h = Math.max(t.height, px(44)) + pad * 2;
+      const cy = y + h / 2;
+      shapes.push(`<rect x="${px(60)}" y="${y}" width="${px(600)}" height="${h}" rx="${px(18)}" fill="#ffffff" fill-opacity=".95"/>`);
+      shapes.push(`<circle cx="${px(100)}" cy="${cy}" r="${px(20)}" fill="#e53935"/>`);
+      shapes.push(`<path d="M${px(91)} ${cy - px(9)} L${px(109)} ${cy + px(9)} M${px(109)} ${cy - px(9)} L${px(91)} ${cy + px(9)}" stroke="#ffffff" stroke-width="${px(4)}" stroke-linecap="round"/>`);
+      composites.push({ input: t.image, top: y + pad, left: px(140) });
+      y += h + px(22);
     }
   }
+  // WhatsApp chat: bubbles on a dark card so they read over any footage.
   if (template === 'whatsapp_chat') {
-    y = px(470);
+    let y = px(540);
     for (const [index, message] of (scene.messages || []).entries()) {
       const t = await text(message, px(440), px(30), index % 2 ? '#00130b' : '#0b1f16', 500);
       if (!t) continue;
       const w = t.width + pad * 2;
       const h = t.height + pad * 2;
-      const left = index % 2 ? WIDTH - px(48) - w : px(48);
-      shapes.push(`<rect x="${left}" y="${y}" width="${w}" height="${h}" rx="${px(24)}" fill="${index % 2 ? '#25d366' : '#ffffff'}"/>`);
+      const left = index % 2 ? WIDTH - px(60) - w : px(60);
+      shapes.push(`<rect x="${left}" y="${y}" width="${w}" height="${h}" rx="${px(22)}" fill="${index % 2 ? '#25d366' : '#ffffff'}"/>`);
       composites.push({ input: t.image, top: y + pad, left: left + pad });
-      y += h + px(22);
+      y += h + px(20);
     }
   }
   if (template === 'cta_offer' && scene.button) {
-    const label = await text(scene.button, px(560), px(34), '#00130b', 800);
+    const label = await text(scene.button, px(560), px(34), '#00130b', 800, 'centre');
     if (label) {
       const h = px(84);
-      shapes.push(`<rect x="${px(48)}" y="${px(1190)}" width="${px(624)}" height="${h}" rx="${px(42)}" fill="#21d17d"/>`);
-      composites.push({ input: label.image, top: px(1190) + Math.round((h - label.height) / 2), left: px(48) + px(36) });
+      shapes.push(`<rect x="${px(60)}" y="${px(1190)}" width="${px(600)}" height="${h}" rx="${px(42)}" fill="#21d17d"/>`);
+      composites.push({ input: label.image, top: px(1190) + Math.round((h - label.height) / 2), left: px(80) });
     }
   }
 
+  // Main title: centred, bold, with a dark shadow for legibility.
+  const title = await text(scene.title, px(624), px(58), '#ffffff', 800, 'centre');
+  const titleTop = title ? Math.max(px(760), px(1000) - title.height) : 0;
+  if (title) {
+    const shadow = await text(scene.title, px(624), px(58), '#000000', 800, 'centre');
+    composites.push({ input: shadow.image, top: titleTop + px(3), left: px(48) + px(3) });
+    composites.push({ input: title.image, top: titleTop, left: px(48) });
+  }
+  // Subtitle sits in a translucent caption bar, as in the local worker.
+  const subtitle = scene.showSubtitle === false ? null : await text(scene.subtitle, px(600), px(28), '#ffffff', 500, 'centre');
+  if (subtitle) {
+    const top = px(1100);
+    shapes.push(`<rect x="${px(40)}" y="${top - pad}" width="${px(640)}" height="${subtitle.height + pad * 2}" rx="${px(14)}" fill="#000000" fill-opacity=".55"/>`);
+    composites.push({ input: subtitle.image, top, left: px(60) });
+  }
+
   const svg = Buffer.from(`<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00130b" stop-opacity=".2"/><stop offset=".55" stop-color="#00130b" stop-opacity="0"/><stop offset="1" stop-color="#00130b" stop-opacity=".88"/></linearGradient></defs>
+    <defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000000" stop-opacity="0"/><stop offset=".5" stop-color="#000000" stop-opacity=".15"/><stop offset="1" stop-color="#000000" stop-opacity=".6"/></linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#shade)"/>
-    <rect x="${px(48)}" y="${px(72)}" width="${px(220)}" height="${px(54)}" rx="${px(27)}" fill="#21d17d"/>
     ${shapes.join('\n')}
   </svg>`);
-  const kicker = await text(scene.kicker, px(180), px(25), '#002414', 700);
-  const title = await text(scene.title, px(624), px(58), '#ffffff', 800);
-  const subtitle = scene.showSubtitle === false ? null : await text(scene.subtitle, px(624), px(28), '#e1f7ec', 500);
-  const layers = [...composites];
-  if (kicker) layers.push({ input: kicker.image, top: px(84), left: px(68) });
-  if (title) layers.push({ input: title.image, top: Math.max(px(800), px(1055) - title.height), left: px(48) });
-  if (subtitle) layers.push({ input: subtitle.image, top: px(1100), left: px(48) });
-  await sharp(svg).composite(layers).png().toFile(output);
+  await sharp(svg).composite(composites).png().toFile(output);
 }
 
-export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, startFraction = 0 }) {
+export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0 }) {
   const isImage = String(type || '').startsWith('image/');
   const hasAudio = !isImage && await sourceHasAudio(source);
-  const duration = isImage ? 0 : await sourceDuration(source);
-  const seekSeconds = duration > seconds ? Math.max(0, (duration - seconds) * Math.min(1, Math.max(0, startFraction))) : 0;
+  // Seek before the input so each scene starts at its own point in the footage.
   const input = isImage
     ? ['-loop', '1', '-framerate', String(FPS), '-i', source]
-    : [...(seekSeconds > 0 ? ['-ss', seekSeconds.toFixed(3)] : []), '-i', source];
+    : (start > 0 ? ['-ss', start.toFixed(2), '-i', source] : ['-i', source]);
   const audioInput = hasAudio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
   const overlayIndex = hasAudio ? 1 : 2;
   const baseFilter = isImage
@@ -185,7 +203,7 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
   await run([
     '-y', ...input, ...audioInput, '-i', overlay,
     '-filter_complex', videoFilter, '-map', '[v]', '-map', audioMap,
-    '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-maxrate', '12M', '-bufsize', '24M',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2', output,
   ], path.dirname(output));
 }
@@ -246,32 +264,18 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const uploadedVoice = downloadedInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = downloadedInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   const scenes = copyFor(job);
-  const sourceCounts = new Map();
-  for (let index = 0; index < scenes.length; index += 1) {
-    const source = visual[index] || visual[index % visual.length];
-    sourceCounts.set(source.localPath, (sourceCounts.get(source.localPath) || 0) + 1);
-  }
-  const sourceOccurrences = new Map();
   const { voice, voiceSource, voiceError } = await resolveVoiceover({
     uploadedVoice, job, scenes, outputPath: path.join(workdir, 'voiceover-tts.mp3'),
   });
   const segments = [];
+  const sourceSeconds = await sourceDuration(visual[0].localPath);
+  const starts = sceneStarts(sourceSeconds, scenes);
   for (let index = 0; index < scenes.length; index += 1) {
     const source = visual[index] || visual[index % visual.length];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
-    const occurrence = sourceOccurrences.get(source.localPath) || 0;
-    const count = sourceCounts.get(source.localPath) || 1;
-    sourceOccurrences.set(source.localPath, occurrence + 1);
     await overlayPng(scenes[index], overlay);
-    await normalizeSegment({
-      source: source.localPath,
-      type: source.type,
-      overlay,
-      output: segment,
-      seconds: scenes[index].seconds ?? SEGMENT_SECONDS,
-      startFraction: count > 1 ? occurrence / count : 0,
-    });
+    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: scenes[index].seconds ?? SEGMENT_SECONDS, start: starts[index] });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }

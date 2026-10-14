@@ -9,12 +9,12 @@ import { industryStoryboard } from '../api/_cloud-industry.mjs';
 import { overlayPng, normalizeSegment, normalizeLoudness, inspectRender } from '../api/_cloud-video.mjs';
 
 // Offline render-spec regression: fixed synthetic fixture, no Edge TTS / network.
-// Asserts the final cloud output spec: 1080x1920, 25 fps, -14 LUFS target.
+// Asserts the final cloud output spec: 1080x1920, 30 fps (matches local worker), -14 LUFS target.
 const dir = () => mkdtempSync(path.join(tmpdir(), 'render-spec-'));
 
 const probe = (file) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_streams', file], { encoding: 'utf8' }));
 
-test('final segment is 1080x1920 at 25 fps and loudness-normalised to -14 LUFS', async () => {
+test('final segment is 1080x1920 at 30 fps and loudness-normalised to -14 LUFS', async () => {
   const work = dir();
   const source = path.join(work, 'source.mp4');
   execFileSync(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=30:duration=4',
@@ -31,7 +31,7 @@ test('final segment is 1080x1920 at 25 fps and loudness-normalised to -14 LUFS',
   const video = probe(normalised).streams.find((s) => s.codec_type === 'video');
   assert.equal(video.width, 1080, 'width');
   assert.equal(video.height, 1920, 'height');
-  assert.equal(video.avg_frame_rate, '25/1', 'fps');
+  assert.equal(video.avg_frame_rate, '30/1', 'fps');
 
   const measure = spawnSync(ffmpegPath, ['-hide_banner', '-nostats', '-i', normalised, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
   const integrated = Number(measure.stderr.split('Summary:')[1].match(/I:\s+(-?[\d.]+)\s+LUFS/)[1]);
@@ -51,8 +51,8 @@ test('reused long video starts later scenes at a different source time', async (
   await overlayPng(industryStoryboard({ brief: '業務主題：肩頸按摩' })[0], overlay);
   const early = path.join(work, 'early.mp4');
   const late = path.join(work, 'late.mp4');
-  await normalizeSegment({ source, type: 'video/mp4', overlay, output: early, seconds: 1, startFraction: 0 });
-  await normalizeSegment({ source, type: 'video/mp4', overlay, output: late, seconds: 1, startFraction: 0.8 });
+  await normalizeSegment({ source, type: 'video/mp4', overlay, output: early, seconds: 1, start: 0 });
+  await normalizeSegment({ source, type: 'video/mp4', overlay, output: late, seconds: 1, start: 5 });
   const frameMd5 = (file) => execFileSync(ffmpegPath, ['-v', 'error', '-i', file, '-frames:v', '1', '-f', 'md5', '-'], { encoding: 'utf8' }).trim();
   assert.notEqual(frameMd5(early), frameMd5(late));
 });

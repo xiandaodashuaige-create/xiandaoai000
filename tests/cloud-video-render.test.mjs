@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
-import { overlayPng, normalizeLoudness } from '../api/_cloud-video.mjs';
+import { overlayPng, normalizeLoudness, sceneStarts } from '../api/_cloud-video.mjs';
 import { industryStoryboard } from '../api/_cloud-industry.mjs';
 
 const dir = () => mkdtempSync(path.join(tmpdir(), 'render-test-'));
@@ -33,4 +33,10 @@ test('final audio is normalised to the -14 LUFS social target', async () => {
   const measure = spawnSync(ffmpegPath, ['-hide_banner', '-nostats', '-i', output, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
   const integrated = Number(measure.stderr.split('Summary:')[1].match(/I:\s+(-?[\d.]+)\s+LUFS/)[1]);
   assert.ok(Math.abs(integrated - -14) <= 1, `integrated ${integrated}`);
+});
+
+test('scene start points match the local worker on the same 39s clip', () => {
+  const scenes = industryStoryboard({ brief: '業務主題：想試下呢個療程' });
+  const starts = sceneStarts(39.056, scenes).map((value) => Number(value.toFixed(2)));
+  assert.deepEqual(starts, [1.17, 8.59, 16.4, 23.82, 30.46]);
 });
