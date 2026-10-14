@@ -296,6 +296,14 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <div class="formgrid">
       <div class="fieldbox"><label for="posterPurpose">制作方式</label><select id="posterPurpose"><option>新做一张营销海报</option><option>参考上传海报重制</option><option>检验并优化现有海报</option></select></div>
       <div class="fieldbox"><label for="posterSize">图片尺寸</label><select id="posterSize"><option value="1080x1350">1080×1350 · 社媒竖版</option><option value="1080x1080">1080×1080 · 方图</option><option value="1080x1920">1080×1920 · Story</option></select></div>
+      <div class="fieldbox wide"><label for="posterStyle">目标风格 / 版式</label><select id="posterStyle">
+        <option value="auto">自动匹配内容</option>
+        <option value="black_gold">黑金高端 · 门店老板主视觉＋痛点层级</option>
+        <option value="wine_process">酒红流程 · 人物＋分步获客流程卡</option>
+        <option value="beige_omnichannel">米白科技 · 多平台＋全渠道流程</option>
+        <option value="documentary">真实门店 · 纪实人物＋信任证据</option>
+      </select><div class="meta">四类版式来自已确认的历史广告方向；正文仍由系统排版，避免 AI 乱写中文、价格或联系方式。</div></div>
+      <div class="fieldbox"><label for="posterBrand">海报品牌 *</label><input id="posterBrand" placeholder="例如：LULIAN AI"></div>
       <div class="fieldbox wide"><label for="posterTitle">主标题 / Hook *</label><input id="posterTitle" placeholder="例如：别只听别人讲 AI，亲手做一次才是真的会"></div>
       <div class="fieldbox wide"><label for="posterFacts">核心卖点、准确价格与事实 *</label><textarea id="posterFacts" placeholder="例如：马币49｜线下实战｜现场操作｜小班教学。只填已经确认的资料。"></textarea></div>
       <div class="fieldbox"><label for="posterCta">行动引导 *</label><input id="posterCta" placeholder="例如：立即 WhatsApp 报名"></div>
@@ -303,7 +311,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     </div>
     <div class="uploadgrid">
       <label class="uploadbox"><b>主视觉图片（可选）</b><small>上传则使用你的产品、人物或门店画面；不上传时由 GPT 生成主视觉，再自动排版。</small><input id="posterMainFiles" type="file" accept="image/*,video/*"></label>
-      <label class="uploadbox"><b>参考海报 / Logo（可选）</b><small>参考只学习排版与风格；Logo 和品牌素材会独立上传。</small><input id="posterRefFiles" type="file" accept="image/*" multiple></label>
+      <label class="uploadbox"><b>参考海报 / Logo（可选）</b><small>参考图用于质检对照；请同时选择最接近的目标风格，确保版式可控。</small><input id="posterRefFiles" type="file" accept="image/*" multiple></label>
     </div>
     <div class="guardrail"><span>✓</span><div><b>项目隔离与检验规则自动生效</b><small>不会把美睫、按摩、美白、培训等不同项目的文案、价格或图片混在一起；后续修改会写入当前项目记忆。</small></div></div>
     <div class="actions"><button id="posterSubmitBtn" class="primary">开始做海报</button></div>
@@ -484,7 +492,7 @@ function clearPendingProjectDraft(){
   selected=[];
   renderFiles();
   ['fileInput','aiMainFiles','aiReferenceFiles','aiCharacterFiles','aiAssetFiles','posterMainFiles','posterRefFiles'].forEach(id=>{$(id).value=''});
-  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName','posterTitle','posterFacts','posterCta'].forEach(id=>{$(id).value=''});
+  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName','posterBrand','posterTitle','posterFacts','posterCta'].forEach(id=>{$(id).value=''});
   $('notice').classList.remove('show');
   $('aiNotice').classList.remove('show');
   $('posterNotice').classList.remove('show');
@@ -505,6 +513,8 @@ async function selectProject(project){
   if(voice)$('aiVoice').value=voice.value;
   $('remixLanguage').value='跟随项目默认语言';
   $('posterLanguage').value='跟随项目默认语言';
+  $('posterStyle').value='auto';
+  $('posterBrand').value=project.client_name||project.project_name||'';
   $('posterCta').value=project.cta||'';
   document.title=project.project_name+'｜鹿联视频员工';
   recordEvent('project_open','',{business_type:project.business_type});
@@ -694,17 +704,18 @@ $('posterSubmitBtn').onclick=async()=>{
   try{
     if(!currentProject)throw new Error('请先选择一个业务项目');
     const main=[...$('posterMainFiles').files];
-    const title=$('posterTitle').value.trim(),facts=$('posterFacts').value.trim(),cta=$('posterCta').value.trim();
-    if(!title||!facts||!cta)throw new Error('请填写主标题、准确事实和行动引导');
+    const brand=$('posterBrand').value.trim(),title=$('posterTitle').value.trim(),facts=$('posterFacts').value.trim(),cta=$('posterCta').value.trim();
+    if(!brand||!title||!facts||!cta)throw new Error('请填写品牌、主标题、准确事实和行动引导');
     const language=$('posterLanguage').value==='跟随项目默认语言'?currentProject.default_language:$('posterLanguage').value;
-    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${currentProject.client_name||currentProject.project_name}\n要求：高端商业广告质感，信息层级清楚，标题醒目，CTA明确，文字不压住人物脸部；只能使用当前项目的准确事实。`;
+    const style=$('posterStyle').value;
+    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n视觉风格：${style}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${brand}\n要求：高端商业广告质感，信息层级清楚，标题醒目，CTA明确，文字不压住人物脸部；正文必须由确定性排版生成，只能使用当前项目的准确事实。`;
     setPosterStatus('正在创建海报任务…',2);
     const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'image_poster',project_name:'广告海报 · '+title.slice(0,18),brief,output_count:1});
     const files=[...main.map(file=>({role:'main',file})),...[...$('posterRefFiles').files].map(file=>({role:'reference',file}))],meta=[];
     for(let i=0;i<files.length;i++)meta.push(await uploadOne(init.job.id,files[i].file,i,files.length,files[i].role,'poster'));
     setPosterStatus(main.length?'图片已上传，正在排版与检验…':'任务已提交，云端将用 GPT 生成主视觉…',93);
     await api('submit_job',{job_id:init.job.id,input_files:meta});
-    recordEvent('submit','',{workflow_mode:'image_poster',language,size:$('posterSize').value},init.job.id);
+    recordEvent('submit','',{workflow_mode:'image_poster',language,size:$('posterSize').value,style},init.job.id);
     setPosterStatus('海报任务已提交，可在历史任务查看进度',100);
     await loadJobs();$('jobs').closest('details').open=true;
   }catch(e){setPosterStatus('提交失败：'+e.message,0)}finally{btn.disabled=false}
@@ -753,14 +764,20 @@ $('revisionSubmit').onclick=async()=>{
 };
 async function loadJobs(){
   if(!currentProject){$('jobs').innerHTML='<div class="empty">请先选择项目。</div>';return}
-  const data=await api('list_jobs',{video_project_id:currentProject.id});
-  $('jobs').innerHTML=data.jobs?.length?data.jobs.map(j=>`
+  const root=$('jobs');
+  try{
+    const data=await api('list_jobs',{video_project_id:currentProject.id});
+    root.innerHTML=data.jobs?.length?data.jobs.map(j=>`
     <div class="job">
       <div class="jobhead"><b>${escapeHtml(j.project_name)} ${j.workflow_mode==='ai_hybrid'?'<span class="jobtype">AI创意成片</span>':j.workflow_mode==='image_poster'?'<span class="jobtype">图片海报</span>':''}<span class="version">V${j.version_number||1}</span>${j.accepted_at?'<span class="accepted">✓ 已确认</span>':''}</b><span class="pill">${label(j.status)}</span></div>
       <div class="meta">${escapeHtml(j.stage||'')} · ${j.progress||0}% · ${new Date(j.created_at).toLocaleString()}</div>
       <div id="job-${j.id}"><button class="smallbtn detail" data-id="${j.id}" style="margin-top:8px">查看</button></div>
     </div>`).join(''):'<div class="empty">还没有任务。</div>';
-  document.querySelectorAll('.detail').forEach(b=>b.onclick=()=>showJob(b.dataset.id));
+    document.querySelectorAll('.detail').forEach(b=>b.onclick=()=>showJob(b.dataset.id));
+  }catch(e){
+    root.innerHTML='<div class="empty">任务列表读取失败：'+escapeHtml(e.message)+' <button id="retryJobs" class="smallbtn" style="margin-left:8px">重试</button></div>';
+    $('retryJobs').onclick=loadJobs;
+  }
 }
 async function showJob(id){
   const root=$('job-'+id);root.innerHTML='<div class="meta">读取中…</div>';

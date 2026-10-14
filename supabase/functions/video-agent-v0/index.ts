@@ -5,7 +5,7 @@ const PUBLIC_KEY = "sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ";
 const INPUT_BUCKET = "video-agent-inputs";
 const RESULT_BUCKET = "video-agent-results";
 const EXPECTED_DIGEST = Deno.env.get("VIDEO_AGENT_ACCESS_DIGEST") ?? "";
-const CLOUD_WORKER_URL = "https://www.xiandaoai.com/api/video-worker";
+const CLOUD_WORKER_URL = Deno.env.get("CLOUD_WORKER_URL") ?? "https://www.xiandaoai.com/api/video-worker";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

@@ -122,6 +122,78 @@ async function textLayer(text, fontFile, size, width, color = '#ffffff', weight 
   }).png().toBuffer();
 }
 
+const POSTER_STYLES = {
+  black_gold: {
+    label: 'black and gold premium beauty-business advertising',
+    prompt: 'A confident Asian beauty salon owner in an elegant dark salon, positioned in the upper-right third. Black lacquer, warm champagne-gold details, cinematic rim light, premium restrained luxury. Keep the upper-left and lower-left areas visually calm for typography.',
+    title: '#fff7df', fact: '#f5e7bd', accent: '#d8ad56', ctaText: '#171006',
+  },
+  wine_process: {
+    label: 'burgundy process-led beauty-business advertising',
+    prompt: 'A confident Asian beauty salon owner holding a tablet, positioned on the right side of a modern salon. Deep burgundy, wine red and soft blush lighting, energetic but premium. Keep the left side and lower band visually calm for a step-by-step acquisition flow.',
+    title: '#fff7f2', fact: '#ffe7df', accent: '#ffb29c', ctaText: '#47130f',
+  },
+  beige_omnichannel: {
+    label: 'warm beige omnichannel technology advertising',
+    prompt: 'A confident Asian female beauty salon owner or manager in polished professional business attire, standing or seated upright with a tablet while reviewing customer acquisition work in a bright modern salon, positioned on the right third. She is clearly the business decision maker: no spa robe, no towel, no treatment pose, not receiving a beauty service, not a consumer. Warm ivory, beige, champagne and subtle rose-gold palette, clean editorial technology aesthetic. Keep the left sixty percent simple and bright for an omnichannel flow.',
+    title: '#2a211d', fact: '#4f4038', accent: '#b66c4d', ctaText: '#fffaf6',
+  },
+  documentary: {
+    label: 'authentic beauty-salon documentary advertising',
+    prompt: 'An authentic Asian beauty salon owner speaking with a client inside a real local salon, candid documentary photography, warm natural window light, credible and approachable, no staged influencer pose. Keep the lower third calm for verified selling points.',
+    title: '#ffffff', fact: '#f4eee8', accent: '#e4a874', ctaText: '#26170d',
+  },
+};
+
+export function posterStyleFromBrief(brief) {
+  const requested = briefValue(brief, '视觉风格', 'auto');
+  if (POSTER_STYLES[requested]) return requested;
+  const text = String(brief || '').toLowerCase();
+  if (/(fb|instagram|\big\b|小紅書|小红书|google|全渠道|全通路|omnichannel)/i.test(text)) return 'beige_omnichannel';
+  if (/(流程|步驟|步骤|自動跟進|自动跟进|预约流程)/.test(text)) return 'wine_process';
+  if (/(高端|黑金|尊貴|尊贵|奢華|奢华)/.test(text)) return 'black_gold';
+  return 'documentary';
+}
+
+function splitFacts(value) {
+  const parts = String(value || '').split(/[｜|\n]+|[。；;](?=\S)/).map((item) => item.trim()).filter(Boolean);
+  return (parts.length ? parts : [String(value || '').trim()]).filter(Boolean).slice(0, 5);
+}
+
+function roundedRect(width, height, fill, radius = 28, stroke = 'none', strokeWidth = 0) {
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${strokeWidth / 2}" y="${strokeWidth / 2}" width="${width - strokeWidth}" height="${height - strokeWidth}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`);
+}
+
+async function factCards(value, font, width, style, compact = false) {
+  const items = splitFacts(value);
+  const gap = compact ? 12 : 16;
+  const padX = compact ? 24 : 28;
+  const padY = compact ? 16 : 20;
+  const size = Math.round(width * (compact ? .042 : .046));
+  const rendered = [];
+  let height = 0;
+  for (let index = 0; index < items.length; index += 1) {
+    const text = await textLayer(`${String(index + 1).padStart(2, '0')}  ${items[index]}`, font, size, width - padX * 2, style.fact, index === 0 ? 700 : 500);
+    const meta = await sharp(text).metadata();
+    const cardHeight = Math.max(compact ? 68 : 78, Number(meta.height || size) + padY * 2);
+    rendered.push({ text, height: cardHeight, textHeight: Number(meta.height || size) });
+    height += cardHeight + (index ? gap : 0);
+  }
+  const layers = [];
+  let top = 0;
+  for (const item of rendered) {
+    const fill = style === POSTER_STYLES.beige_omnichannel ? '#fffaf2e8' : '#090807a8';
+    const stroke = style.accent;
+    layers.push({ input: roundedRect(width, item.height, fill, 22, stroke, 2), top, left: 0 });
+    layers.push({ input: item.text, top: top + Math.round((item.height - item.textHeight) / 2), left: padX });
+    top += item.height + gap;
+  }
+  return {
+    data: await sharp({ create: { width, height: Math.max(1, height), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(layers).png().toBuffer(),
+    height,
+  };
+}
+
 export async function renderPoster(job, input) {
   const font = await ensureFont();
   const brief = String(job.brief || '');
@@ -134,39 +206,64 @@ export async function renderPoster(job, input) {
   const facts = briefValue(brief, '核心卖点与准确事实', briefValue(brief, '准确价格/优惠/事实', ''));
   const cta = briefValue(brief, '行动引导', '立即了解');
   const brand = briefValue(brief, '品牌', briefValue(brief, '客户', 'LULIAN AI'));
+  const styleKey = posterStyleFromBrief(brief);
+  const style = POSTER_STYLES[styleKey];
 
-  const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.92, saturation: 0.96 }).toBuffer();
-  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#02140d" stop-opacity=".18"/><stop offset=".46" stop-color="#03120c" stop-opacity=".14"/><stop offset="1" stop-color="#020b07" stop-opacity=".92"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
-  const brandBg = Buffer.from(`<svg width="${Math.round(width * .44)}" height="66" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="33" fill="#28d57e"/></svg>`);
+  const modulation = styleKey === 'beige_omnichannel'
+    ? { brightness: 1.08, saturation: 0.78 }
+    : styleKey === 'documentary' ? { brightness: .94, saturation: .92 } : { brightness: .74, saturation: .72 };
+  const base = await sharp(input).resize(width, height, { fit: 'cover', position: styleKey === 'beige_omnichannel' || styleKey === 'wine_process' ? 'right' : 'attention' }).modulate(modulation).toBuffer();
+  const shadeStops = styleKey === 'beige_omnichannel'
+    ? '<stop offset="0" stop-color="#fffaf2" stop-opacity=".98"/><stop offset=".58" stop-color="#fff8ee" stop-opacity=".88"/><stop offset="1" stop-color="#fff8ee" stop-opacity=".08"/>'
+    : styleKey === 'wine_process'
+      ? '<stop offset="0" stop-color="#400914" stop-opacity=".94"/><stop offset=".62" stop-color="#5f1020" stop-opacity=".72"/><stop offset="1" stop-color="#150409" stop-opacity=".20"/>'
+      : styleKey === 'black_gold'
+        ? '<stop offset="0" stop-color="#050505" stop-opacity=".88"/><stop offset=".58" stop-color="#090806" stop-opacity=".58"/><stop offset="1" stop-color="#050403" stop-opacity=".84"/>'
+        : '<stop offset="0" stop-color="#1b120c" stop-opacity=".16"/><stop offset=".52" stop-color="#1b120c" stop-opacity=".18"/><stop offset="1" stop-color="#160d07" stop-opacity=".90"/>';
+  const direction = styleKey === 'beige_omnichannel' || styleKey === 'wine_process' ? 'x2="1" y2="0"' : 'x2="0" y2="1"';
+  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" ${direction}>${shadeStops}</linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  const brandWidth = Math.min(contentWidth, Math.max(280, Math.round(width * .42)));
+  const brandBg = roundedRect(brandWidth, 62, styleKey === 'beige_omnichannel' ? '#2b211d' : '#070605b8', 31, style.accent, 2);
   const ctaWidth = Math.min(contentWidth, Math.max(Math.round(width * .52), 500));
-  const ctaBg = Buffer.from(`<svg width="${ctaWidth}" height="92" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="46" fill="#28d57e"/></svg>`);
-  const [brandText, titleText, factText, ctaText] = await Promise.all([
-    textLayer(brand.slice(0, 28), font, Math.round(width * .032), Math.round(width * .37), '#ffffff', 700),
-    textLayer(title, font, Math.round(width * .072), contentWidth, '#ffffff', 800),
-    textLayer(facts.replaceAll('｜', ' · '), font, Math.round(width * .039), contentWidth, '#e2f4ea', 400),
-    textLayer(cta, font, Math.round(width * .041), ctaWidth - 72, '#021b0f', 800),
+  const ctaBg = roundedRect(ctaWidth, 92, style.accent, 46);
+  const layoutWidth = styleKey === 'black_gold'
+    ? Math.round(width * .60)
+    : styleKey === 'beige_omnichannel' ? Math.round(width * .60)
+      : styleKey === 'wine_process' ? Math.round(width * .55) : contentWidth;
+  const [brandText, titleText, cards, ctaText] = await Promise.all([
+    textLayer(brand.slice(0, 28), font, Math.round(width * .030), brandWidth - 44, styleKey === 'beige_omnichannel' ? '#fffaf5' : style.accent, 700),
+    textLayer(title, font, Math.round(width * (styleKey === 'beige_omnichannel' ? .058 : .071)), layoutWidth, style.title, 800),
+    factCards(facts, font, layoutWidth, style, styleKey === 'wine_process'),
+    textLayer(cta, font, Math.round(width * .041), ctaWidth - 72, style.ctaText, 800),
   ]);
-  const [titleMeta, factMeta, ctaMeta] = await Promise.all([sharp(titleText).metadata(), sharp(factText).metadata(), sharp(ctaText).metadata()]);
-  const titleTop = Math.max(Math.round(height * .49), height - Number(titleMeta.height || 130) - Number(factMeta.height || 70) - 230);
-  const factsTop = titleTop + Number(titleMeta.height || 130) + 28;
-  const ctaTop = Math.min(height - 120, factsTop + Number(factMeta.height || 70) + 36);
+  const [titleMeta, ctaMeta] = await Promise.all([sharp(titleText).metadata(), sharp(ctaText).metadata()]);
+  const titleTop = styleKey === 'documentary' ? Math.round(height * .50) : Math.round(height * .15);
+  const factsTop = titleTop + Number(titleMeta.height || 130) + Math.round(height * .035);
+  const ctaTop = Math.min(height - 120, Math.max(height - 150, factsTop + cards.height + Math.round(height * .035)));
+  const ctaLayer = await sharp({ create: { width: ctaWidth, height: 92, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
+    { input: ctaBg, top: 0, left: 0 },
+    { input: ctaText, top: Math.max(10, Math.round((92 - Number(ctaMeta.height || 50)) / 2)), left: 36 },
+  ]).png().toBuffer();
 
   return sharp(base).composite([
     { input: shade, top: 0, left: 0 },
     { input: brandBg, top: Math.round(height * .065), left: margin },
-    { input: brandText, top: Math.round(height * .065) + 13, left: margin + 24 },
+    { input: brandText, top: Math.round(height * .065) + 12, left: margin + 22 },
     { input: titleText, top: titleTop, left: margin },
-    { input: factText, top: factsTop, left: margin },
-    { input: ctaBg, top: ctaTop, left: margin },
-    { input: ctaText, top: ctaTop + Math.max(10, Math.round((92 - Number(ctaMeta.height || 50)) / 2)), left: margin + 36 },
+    { input: cards.data, top: factsTop, left: margin },
+    { input: ctaLayer, top: ctaTop, left: margin },
   ]).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
-function posterGenerationPrompt(job) {
+export function posterGenerationPrompt(job) {
   const title = briefValue(job.brief, '主标题', job.project_name || '营销海报');
   const facts = briefValue(job.brief, '核心卖点与准确事实', '');
   const brand = briefValue(job.brief, '品牌', '');
-  return `Create a premium commercial advertising background image for ${brand}. Campaign theme: ${title}. Confirmed context: ${facts}. Photorealistic, polished studio lighting, natural anatomy, strong focal subject, vertical social-ad composition, clean negative space in the lower half for later typography. Do not render words, letters, numbers, prices, logos, watermarks, UI, QR codes, or captions.`;
+  const audience = briefValue(job.brief, '目标客户', 'beauty salon owners and local beauty-business decision makers');
+  const business = briefValue(job.brief, '业务类型', 'beauty-business customer acquisition');
+  const styleKey = posterStyleFromBrief(job.brief);
+  const style = POSTER_STYLES[styleKey];
+  return `Create a single premium vertical 4:5 advertising background image, not a finished poster and not a collage. Business: ${business}. Intended buyer: ${audience}. Brand context: ${brand}. Campaign theme: ${title}. Confirmed context for visual relevance only: ${facts}. Art direction: ${style.label}. ${style.prompt} Show a credible beauty-business decision maker, not a consumer massage promotion and not an unrelated industry. Photorealistic commercial photography, natural hands and anatomy, one clear focal story, realistic salon details, polished lighting. Leave deliberately quiet safe areas exactly as described for later deterministic typography. Do not render any words, letters, numbers, prices, platform names, logos, watermarks, app UI, QR codes, captions, poster borders, or fake metrics.`;
 }
 
 async function heartbeat(accessCode, jobId, stage, progress) {
@@ -234,6 +331,16 @@ async function runOne(accessCode, mediaEnv = process.env) {
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error('cloud_worker_failed', JSON.stringify({ job_id: job.id, workflow_mode: job.workflow_mode, error: message.slice(0, 900) }));
+    const inputs = Array.isArray(job.input_files) ? job.input_files : [];
+    const hasLocalPosterSource = inputs.some((item) => item.role === 'main' && item.path);
+    if (job.workflow_mode === 'image_poster' && !hasLocalPosterSource) {
+      await rpc('video_agent_worker_update', {
+        p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 18,
+        p_stage: 'GPT 主视觉生成失败，请查看错误后重试', p_output_files: [], p_error_message: message.slice(-900),
+      });
+      return { ok: false, claimed: true, job_id: job.id, fallback: null, error: message };
+    }
     await rpc('video_agent_cloud_fallback', { p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER, p_error_message: message });
     return { ok: false, claimed: true, job_id: job.id, fallback: 'local', error: message };
   }
