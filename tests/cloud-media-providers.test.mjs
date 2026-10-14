@@ -45,6 +45,20 @@ test('GPT image adapter sends the restored model contract and validates the imag
   assert.match(result.sha256, /^[a-f0-9]{64}$/);
 });
 
+test('GPT image adapter uses Vercel OIDC when a provider key cannot be exported', async () => {
+  const fixture = await sharp({ create: { width: 1088, height: 1360, channels: 3, background: '#224f3d' } }).webp().toBuffer();
+  let request;
+  const result = await generateOpenAiImage({
+    prompt: 'premium wellness background without text',
+    env: { AI_MEDIA_GENERATION_ENABLED: 'true', VERCEL_OIDC_TOKEN: 'oidc-token' },
+    fetcher: async (url, init) => { request = { url, init, body: JSON.parse(init.body) }; return json({ data: [{ b64_json: fixture.toString('base64') }] }); },
+  });
+  assert.equal(request.url, 'https://ai-gateway.vercel.sh/v1/images/generations');
+  assert.equal(request.init.headers.Authorization, 'Bearer oidc-token');
+  assert.equal(request.body.model, 'openai/gpt-image-2');
+  assert.equal(result.provider, 'vercel-ai-gateway');
+});
+
 test('Runway creates, polls and downloads a vertical clip', async () => {
   const calls = [];
   const result = await generateAiVideoClip({
@@ -154,6 +168,6 @@ test('poster UI permits an empty main image and the worker uses only role=main a
 
 test('capability endpoint separates installed adapters from configured providers', async () => {
   const worker = await readFile(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
-  assert.match(worker, /provider_adapters: \['openai_image', 'seedance', 'runway'\]/);
+  assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'\]/);
   assert.match(worker, /providers: mediaProviderCapabilities\(\)/);
 });

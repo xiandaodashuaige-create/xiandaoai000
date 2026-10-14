@@ -226,7 +226,7 @@ async function runOne(accessCode) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'seedance', 'runway'], providers: mediaProviderCapabilities(), mode: 'cloud_canary_with_local_fallback' });
+  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(), mode: 'cloud_canary_with_local_fallback' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });

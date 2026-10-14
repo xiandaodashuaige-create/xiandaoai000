@@ -21,6 +21,8 @@ OPENAI_IMAGE_QUALITY=medium
 
 This powers poster background generation when no main image is uploaded, and is the fallback source for AI Hybrid hook/CTA stills when no video provider is configured.
 
+On Vercel, the same adapter can run without exporting a provider secret. If `OPENAI_API_KEY` is absent, it uses the deployment's short-lived `VERCEL_OIDC_TOKEN`, sends the OpenAI-compatible request to AI Gateway, and selects `openai/gpt-image-2`. A direct provider key remains supported for non-Vercel runtimes and existing BYOK deployments.
+
 ## Seedance
 
 ```text

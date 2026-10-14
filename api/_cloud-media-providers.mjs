@@ -4,6 +4,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 
 const OPENAI_IMAGE_URL = 'https://api.openai.com/v1/images/generations';
+const GATEWAY_IMAGE_URL = 'https://ai-gateway.vercel.sh/v1/images/generations';
 const RUNWAY_BASE = 'https://api.dev.runwayml.com';
 const DEFAULT_SEEDANCE_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';
 const MAX_JSON_BYTES = 30 * 1024 * 1024;
@@ -50,12 +51,20 @@ function configuredVideoProvider(env) {
   return null;
 }
 
+function imageProviderConfig(env) {
+  if (env.OPENAI_API_KEY) return { provider: 'openai', token: env.OPENAI_API_KEY, url: OPENAI_IMAGE_URL, model: env.OPENAI_IMAGE_MODEL || 'gpt-image-2' };
+  const gatewayToken = env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN;
+  if (gatewayToken) return { provider: 'vercel-ai-gateway', token: gatewayToken, url: GATEWAY_IMAGE_URL, model: env.OPENAI_IMAGE_MODEL || 'openai/gpt-image-2' };
+  return null;
+}
+
 export function mediaProviderCapabilities(env = process.env) {
   const on = enabled(env);
+  const image = on ? imageProviderConfig(env) : null;
   return {
     enabled: on,
-    image: on && Boolean(env.OPENAI_API_KEY),
-    imageProvider: on && env.OPENAI_API_KEY ? 'openai' : null,
+    image: Boolean(image),
+    imageProvider: image?.provider || null,
     video: on && Boolean(configuredVideoProvider(env)),
     videoProvider: on ? configuredVideoProvider(env) : null,
     seedance: on && Boolean(env.ARK_API_KEY),
@@ -65,14 +74,14 @@ export function mediaProviderCapabilities(env = process.env) {
 
 export async function generateOpenAiImage({ prompt, env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
   if (!enabled(env)) throw new Error('ai_media_generation_disabled');
-  if (!env.OPENAI_API_KEY) throw new Error('openai_image_not_configured');
-  const model = env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
-  const response = await fetcher(OPENAI_IMAGE_URL, {
+  const image = imageProviderConfig(env);
+  if (!image) throw new Error('openai_image_not_configured');
+  const response = await fetcher(image.url, {
     method: 'POST',
-    headers: apiHeaders(env.OPENAI_API_KEY),
+    headers: apiHeaders(image.token),
     signal: timeoutSignal(timeoutMs),
     body: JSON.stringify({
-      model,
+      model: image.model,
       prompt: String(prompt || '').slice(0, 12000),
       size: env.OPENAI_IMAGE_SIZE || '1088x1360',
       quality: env.OPENAI_IMAGE_QUALITY || 'medium',
@@ -89,7 +98,7 @@ export async function generateOpenAiImage({ prompt, env = process.env, fetcher =
   if (!meta.width || !meta.height || !['webp', 'png', 'jpeg'].includes(String(meta.format))) {
     throw new Error('openai_image_invalid_media');
   }
-  return { data, type: `image/${meta.format === 'jpeg' ? 'jpeg' : meta.format}`, provider: 'openai', model, sha256: sha256(data), width: meta.width, height: meta.height };
+  return { data, type: `image/${meta.format === 'jpeg' ? 'jpeg' : meta.format}`, provider: image.provider, model: image.model, sha256: sha256(data), width: meta.width, height: meta.height };
 }
 
 function safeRemoteUrl(value) {
