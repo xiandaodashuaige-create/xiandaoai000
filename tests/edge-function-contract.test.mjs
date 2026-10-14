@@ -61,3 +61,13 @@ test('retry migration is access checked, input preserving, and idempotent', asyn
   assert.match(migration, /where parent_job_id=p_parent_job_id/);
   assert.match(migration, /revoke all on function public\.video_agent_create_revision\(text,uuid,text,text\) from public/);
 });
+
+test('retry lineage preserves the paid-generation correlation id', async () => {
+  const migration = await readFile(
+    new URL('../supabase/migrations/20261014112600_retry_generation_correlation.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(migration, /case when is_failed_retry then coalesce\(p\.correlation_id,p\.id\)/);
+  assert.match(migration, /where parent_job_id=p_parent_job_id/);
+  assert.match(migration, /video_agent_check_access\(p_access\)/);
+});

@@ -169,14 +169,14 @@ test('Vercel AI Gateway submits a reference-to-video job with OIDC and provenanc
 });
 
 test('failed-job retries reuse generation idempotency keys without merging distinct revisions', () => {
-  const shared = { video_project_id: 'project-1', project_name: 'Campaign · Retry 4', brief: 'same brief', revision_scope: 'retry_failed' };
+  const shared = { video_project_id: 'project-1', project_name: 'Campaign · Retry 4', brief: 'same brief', revision_scope: 'retry_failed', correlation_id: 'root-generation' };
   assert.equal(
     aiVideoIdempotencyKey({ ...shared, id: 'retry-4' }, 'ai_hook'),
     aiVideoIdempotencyKey({ ...shared, id: 'retry-5', project_name: 'Campaign · Retry 5' }, 'ai_hook'),
   );
-  assert.notEqual(
-    aiVideoIdempotencyKey({ ...shared, id: 'retry-5', brief: 'changed brief' }, 'ai_hook'),
+  assert.equal(
     aiVideoIdempotencyKey({ ...shared, id: 'retry-5' }, 'ai_hook'),
+    aiVideoIdempotencyKey({ id: 'root-generation' }, 'ai_hook'),
   );
   assert.notEqual(
     aiVideoIdempotencyKey({ id: 'revision-a', revision_scope: 'copy' }, 'ai_hook'),
