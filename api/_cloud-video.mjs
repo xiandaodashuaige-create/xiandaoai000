@@ -317,7 +317,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const scenes = copyFor(job);
-  const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress });
+  const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress, env: options.mediaEnv || process.env });
   const activeInputs = prepared.inputs;
   const visual = selectSceneSources(activeInputs);
   if (!visual.length) throw new Error('missing_visual_input');

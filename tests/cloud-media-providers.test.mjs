@@ -169,5 +169,6 @@ test('poster UI permits an empty main image and the worker uses only role=main a
 test('capability endpoint separates installed adapters from configured providers', async () => {
   const worker = await readFile(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
   assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'\]/);
-  assert.match(worker, /providers: mediaProviderCapabilities\(\)/);
+  assert.match(worker, /req\.headers\['x-vercel-oidc-token'\]/);
+  assert.match(worker, /providers: mediaProviderCapabilities\(mediaEnv\)/);
 });

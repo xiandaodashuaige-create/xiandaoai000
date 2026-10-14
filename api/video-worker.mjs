@@ -158,7 +158,7 @@ async function heartbeat(accessCode, jobId, stage, progress) {
   await rpc('video_agent_worker_heartbeat', { p_access: accessCode, p_job_id: jobId, p_worker_id: WORKER, p_stage: stage, p_progress: progress });
 }
 
-async function runOne(accessCode) {
+async function runOne(accessCode, mediaEnv = process.env) {
   const job = await rpc('video_agent_claim_cloud_job', { p_access: accessCode, p_worker_id: WORKER });
   if (!job?.id) return { ok: true, claimed: false };
   try {
@@ -176,7 +176,7 @@ async function runOne(accessCode) {
         source = await download(INPUT_BUCKET, main.path);
       } else {
         await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
-        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job) });
+        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), env: mediaEnv });
         source = generated.data;
         artifactMeta = { generated_background: true, image_provider: generated.provider, image_model: generated.model, source_sha256: generated.sha256 };
       }
@@ -188,7 +188,7 @@ async function runOne(accessCode) {
       await heartbeat(accessCode, job.id, '云端正在下载项目隔离素材', 14);
       const downloaded = [];
       for (let index = 0; index < inputs.length; index += 1) downloaded.push(await downloadToTmp(inputs[index], index, job.id));
-      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress));
+      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress), { mediaEnv });
       result = rendered.data;
       fileName = 'creative-cloud.mp4';
       contentType = 'video/mp4';
@@ -226,11 +226,13 @@ async function runOne(accessCode) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(), mode: 'cloud_canary_with_local_fallback' });
+  const oidcToken = String(req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN || '');
+  const mediaEnv = oidcToken ? { ...process.env, VERCEL_OIDC_TOKEN: oidcToken } : process.env;
+  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'cloud_canary_with_local_fallback' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });
-    const result = await runOne(env('VIDEO_AGENT_ACCESS'));
+    const result = await runOne(env('VIDEO_AGENT_ACCESS'), mediaEnv);
     return res.status(result.ok ? 200 : 202).json(result);
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
