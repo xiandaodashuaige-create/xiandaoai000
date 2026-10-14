@@ -120,6 +120,13 @@ async function generateGatewayVideo({ prompt, negativePrompt, duration, referenc
     providerOptions: gatewayProviderOptions(model, negativePrompt, env, maxWaitMs),
     headers: { 'idempotency-key': idempotencyKey },
     poll: { intervalMs: 5000, timeoutMs: maxWaitMs },
+    download: async ({ url, abortSignal }) => {
+      const response = await fetcher(safeRemoteUrl(url), { signal: abortSignal || timeoutSignal(60000) });
+      if (!response.ok) throw new Error(`gateway_video_download_${response.status}`);
+      const data = await readLimited(response, MAX_VIDEO_BYTES, 'gateway_video_download');
+      if (data.length < 1024) throw new Error('gateway_video_too_small');
+      return { data, mediaType: response.headers.get('content-type') || 'video/mp4' };
+    },
   });
   const file = result?.videos?.[0];
   const data = file?.uint8Array ? Buffer.from(file.uint8Array) : null;
@@ -283,6 +290,16 @@ function negativeVisualPrompt(job) {
   return `identity drift, different person, face morphing, distorted anatomy, extra fingers, deformed hands, duplicate people, text, letters, captions, subtitles, logos, watermarks, QR codes, UI text${exclusions ? `; ${exclusions}` : ''}`;
 }
 
+export function aiVideoIdempotencyKey(job = {}, role = 'clip') {
+  const retryIdentity = [
+    job.video_project_id || '',
+    String(job.project_name || '').replace(/ · Retry [0-9]+$/, ''),
+    sha256(Buffer.from(String(job.brief || ''))),
+  ].join(':');
+  const identity = job.revision_scope === 'retry_failed' ? retryIdentity : (job.id || 'job');
+  return `v3-${crypto.createHash('sha256').update(`${identity}:${role}`).digest('hex').slice(0, 48)}`;
+}
+
 export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
   const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook');
@@ -304,7 +321,7 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
   const negativePrompt = negativeVisualPrompt(job);
   const generated = await Promise.all(missing.map(async (item, index) => {
     const prompt = visualPrompt(job, item.scene, item.position);
-    const idempotencyKey = `v3-${crypto.createHash('sha256').update(`${job.id || 'job'}:${item.role}`).digest('hex').slice(0, 48)}`;
+    const idempotencyKey = aiVideoIdempotencyKey(job, item.role);
     const result = await generateAiVideoClip({ prompt, negativePrompt, duration: item.scene?.seconds || 5, referenceImage, idempotencyKey, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS, videoGenerator, gatewayFactory });
     const localPath = path.join(workdir, `${item.role}-${index}${result.type === 'video/webm' ? '.webm' : '.mp4'}`);
     await writeFile(localPath, result.data);

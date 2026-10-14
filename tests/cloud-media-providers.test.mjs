@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import sharp from 'sharp';
 import {
+  aiVideoIdempotencyKey,
   generateAiVideoClip,
   generateOpenAiImage,
   mediaProviderCapabilities,
@@ -128,6 +129,10 @@ test('Vercel AI Gateway submits a reference-to-video job with OIDC and provenanc
     duration: 5,
     referenceImage: { data: Buffer.alloc(2048, 2), type: 'image/jpeg' },
     idempotencyKey: 'v3-job-hook',
+    fetcher: async (url) => {
+      assert.equal(String(url), 'https://cdn.example.com/gateway.mp4');
+      return video();
+    },
     env: {
       AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'vercel-ai-gateway',
       VERCEL_OIDC_TOKEN: 'oidc-token', AI_GATEWAY_VIDEO_MODEL: 'klingai/kling-v3.0-i2v',
@@ -138,6 +143,9 @@ test('Vercel AI Gateway submits a reference-to-video job with OIDC and provenanc
     },
     videoGenerator: async (options) => {
       request = options;
+      const downloaded = await options.download({ url: new URL('https://cdn.example.com/gateway.mp4') });
+      assert.equal(downloaded.data.length, 2048);
+      assert.equal(downloaded.mediaType, 'video/mp4');
       return {
         videos: [{ uint8Array: new Uint8Array(2048).fill(8), mediaType: 'video/mp4' }],
         providerMetadata: { gateway: { asyncJob: { jobId: 'gateway-job-1', status: 'completed' } } },
@@ -158,6 +166,22 @@ test('Vercel AI Gateway submits a reference-to-video job with OIDC and provenanc
   assert.equal(result.provider, 'vercel-ai-gateway');
   assert.equal(result.taskId, 'gateway-job-1');
   assert.match(result.sha256, /^[a-f0-9]{64}$/);
+});
+
+test('failed-job retries reuse generation idempotency keys without merging distinct revisions', () => {
+  const shared = { video_project_id: 'project-1', project_name: 'Campaign · Retry 4', brief: 'same brief', revision_scope: 'retry_failed' };
+  assert.equal(
+    aiVideoIdempotencyKey({ ...shared, id: 'retry-4' }, 'ai_hook'),
+    aiVideoIdempotencyKey({ ...shared, id: 'retry-5', project_name: 'Campaign · Retry 5' }, 'ai_hook'),
+  );
+  assert.notEqual(
+    aiVideoIdempotencyKey({ ...shared, id: 'retry-5', brief: 'changed brief' }, 'ai_hook'),
+    aiVideoIdempotencyKey({ ...shared, id: 'retry-5' }, 'ai_hook'),
+  );
+  assert.notEqual(
+    aiVideoIdempotencyKey({ id: 'revision-a', revision_scope: 'copy' }, 'ai_hook'),
+    aiVideoIdempotencyKey({ id: 'revision-b', revision_scope: 'copy' }, 'ai_hook'),
+  );
 });
 
 test('Gateway image-to-video model fails before spending when character reference is absent', async () => {
