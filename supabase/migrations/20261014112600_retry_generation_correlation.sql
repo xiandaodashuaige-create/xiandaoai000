@@ -53,7 +53,7 @@ begin
     case when is_failed_retry then '已复用原素材，等待云端重新生成' else '优化任务已提交，等待工厂' end,
     p.input_files,p.id,next_ver,trim(p_revision_prompt),coalesce(nullif(trim(p_revision_scope),''),'auto'),
     p.external_tenant_id,p.external_project_id,p.conversation_session_id,
-    case when is_failed_retry then coalesce(p.correlation_id,p.id) else p.correlation_id end,
+    case when is_failed_retry then coalesce(p.correlation_id,p.id::text) else p.correlation_id end,
     next_idempotency_key,p.provider,p.model,p.estimated_cost,next_execution_target
   ) returning * into v;
 
