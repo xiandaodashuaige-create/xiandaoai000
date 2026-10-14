@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
+import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
@@ -12,6 +15,7 @@ const INPUT_BUCKET = 'video-agent-inputs';
 const RESULT_BUCKET = 'video-agent-results';
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
 const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
+const execFileAsync = promisify(execFile);
 
 function env(name) {
   const value = process.env[name];
@@ -60,6 +64,17 @@ async function downloadToTmp(item, index, jobId) {
   await mkdir(path.dirname(localPath), { recursive: true });
   await writeFile(localPath, await download(INPUT_BUCKET, item.path));
   return { ...item, localPath };
+}
+
+async function posterSource(main, jobId) {
+  const downloaded = await downloadToTmp(main, 0, jobId);
+  if (!String(main.type || '').startsWith('video/')) return readFile(downloaded.localPath);
+  const output = path.join('/tmp', `video-${jobId}`, 'poster-source.jpg');
+  await execFileAsync(ffmpegPath, [
+    '-y', '-loglevel', 'error', '-ss', '1', '-i', downloaded.localPath,
+    '-frames:v', '1', '-q:v', '2', output,
+  ]);
+  return readFile(output);
 }
 
 async function upload(bucket, objectPath, data, contentType) {
@@ -171,9 +186,8 @@ async function runOne(accessCode, mediaEnv = process.env) {
     if (job.workflow_mode === 'image_poster') {
       let source;
       if (main?.path) {
-        if (String(main.type || '').startsWith('video/')) throw new Error('video_poster_source_requires_local_ffmpeg');
         await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
-        source = await download(INPUT_BUCKET, main.path);
+        source = await posterSource(main, job.id);
       } else {
         await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
         const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), env: mediaEnv });
