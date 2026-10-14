@@ -295,6 +295,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     </div>
     <div class="formgrid">
       <div class="fieldbox"><label for="posterPurpose">制作方式</label><select id="posterPurpose"><option>新做一张营销海报</option><option>参考上传海报重制</option><option>检验并优化现有海报</option></select></div>
+      <div class="fieldbox"><label for="posterStyle">视觉风格</label><select id="posterStyle"><option value="brand_green">简洁绿色</option><option value="black_gold">黑金高级感</option><option value="burgundy">酒红美业风</option></select></div>
       <div class="fieldbox"><label for="posterSize">图片尺寸</label><select id="posterSize"><option value="1080x1350">1080×1350 · 社媒竖版</option><option value="1080x1080">1080×1080 · 方图</option><option value="1080x1920">1080×1920 · Story</option></select></div>
       <div class="fieldbox wide"><label for="posterTitle">主标题 / Hook *</label><input id="posterTitle" placeholder="例如：别只听别人讲 AI，亲手做一次才是真的会"></div>
       <div class="fieldbox wide"><label for="posterFacts">核心卖点、准确价格与事实 *</label><textarea id="posterFacts" placeholder="例如：马币49｜线下实战｜现场操作｜小班教学。只填已经确认的资料。"></textarea></div>
@@ -302,8 +303,8 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
       <div class="fieldbox"><label for="posterLanguage">语言</label><select id="posterLanguage"><option>跟随项目默认语言</option><option>简体中文</option><option>繁体中文</option><option>English</option></select></div>
     </div>
     <div class="uploadgrid">
-      <label class="uploadbox"><b>主视觉图片（可选）</b><small>上传则使用你的产品、人物或门店画面；不上传时由 GPT 生成主视觉，再自动排版。</small><input id="posterMainFiles" type="file" accept="image/*,video/*"></label>
-      <label class="uploadbox"><b>参考海报 / Logo（可选）</b><small>参考只学习排版与风格；Logo 和品牌素材会独立上传。</small><input id="posterRefFiles" type="file" accept="image/*" multiple></label>
+      <label class="uploadbox"><b>主视觉图片（可选）</b><small>优先使用你的产品、人物或门店画面；优化已有海报时请在这里上传原图。</small><input id="posterMainFiles" type="file" accept="image/*,video/*"></label>
+      <label class="uploadbox"><b>参考海报（最多3张）</b><small>学习配色、摄影与构图；文案和品牌使用本次资料。参考重制需要图片生成服务可用。</small><input id="posterRefFiles" type="file" accept="image/*" multiple></label>
     </div>
     <div class="guardrail"><span>✓</span><div><b>项目隔离与检验规则自动生效</b><small>不会把美睫、按摩、美白、培训等不同项目的文案、价格或图片混在一起；后续修改会写入当前项目记忆。</small></div></div>
     <div class="actions"><button id="posterSubmitBtn" class="primary">开始做海报</button></div>
@@ -694,10 +695,14 @@ $('posterSubmitBtn').onclick=async()=>{
   try{
     if(!currentProject)throw new Error('请先选择一个业务项目');
     const main=[...$('posterMainFiles').files];
+    const references=[...$('posterRefFiles').files];
+    if(references.length>3)throw new Error('参考海报最多上传3张');
+    if($('posterPurpose').value==='参考上传海报重制'&&!references.length)throw new Error('请上传要参考的海报');
+    if($('posterPurpose').value==='检验并优化现有海报'&&!main.length)throw new Error('请上传要优化的原海报');
     const title=$('posterTitle').value.trim(),facts=$('posterFacts').value.trim(),cta=$('posterCta').value.trim();
     if(!title||!facts||!cta)throw new Error('请填写主标题、准确事实和行动引导');
     const language=$('posterLanguage').value==='跟随项目默认语言'?currentProject.default_language:$('posterLanguage').value;
-    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${currentProject.client_name||currentProject.project_name}\n要求：高端商业广告质感，信息层级清楚，标题醒目，CTA明确，文字不压住人物脸部；只能使用当前项目的准确事实。`;
+    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n视觉风格：${$('posterStyle').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${currentProject.client_name||currentProject.project_name}\n要求：一张海报、一个核心卖点、短句、明确CTA；真实素材优先；参考图只指导配色摄影与构图，不复制参考的价格、品牌与人物；只能使用当前项目的准确事实，成品需人工检查人物与服务真实性。`;
     setPosterStatus('正在创建海报任务…',2);
     const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'image_poster',project_name:'广告海报 · '+title.slice(0,18),brief,output_count:1});
     const files=[...main.map(file=>({role:'main',file})),...[...$('posterRefFiles').files].map(file=>({role:'reference',file}))],meta=[];

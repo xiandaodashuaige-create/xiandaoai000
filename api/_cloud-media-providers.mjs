@@ -72,22 +72,42 @@ export function mediaProviderCapabilities(env = process.env) {
   };
 }
 
-export async function generateOpenAiImage({ prompt, env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
+export async function generateOpenAiImage({ prompt, referenceImages = [], env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
   if (!enabled(env)) throw new Error('ai_media_generation_disabled');
   const image = imageProviderConfig(env);
   if (!image) throw new Error('openai_image_not_configured');
-  const response = await fetcher(image.url, {
+  if (!Array.isArray(referenceImages) || referenceImages.length > 4) throw new Error('image_reference_limit');
+  // Never silently drop supplied references on a generation-only gateway.
+  if (referenceImages.length && image.provider !== 'openai') throw new Error('image_reference_edit_requires_openai_key');
+  const fields = {
+    model: image.model,
+    prompt: String(prompt || '').slice(0, 12000),
+    size: env.OPENAI_IMAGE_SIZE || '1088x1360',
+    quality: env.OPENAI_IMAGE_QUALITY || 'medium',
+    output_format: 'webp',
+    moderation: 'auto',
+    n: 1,
+  };
+  let body = JSON.stringify(fields);
+  let headers = apiHeaders(image.token);
+  if (referenceImages.length) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) form.append(key, String(value));
+    for (const [index, reference] of referenceImages.entries()) {
+      const data = Buffer.from(reference.data || []);
+      if (!data.length || data.length > MAX_JSON_BYTES) throw new Error('image_reference_invalid_size');
+      const meta = await sharp(data).metadata();
+      if (!['png', 'webp', 'jpeg'].includes(meta.format)) throw new Error('image_reference_invalid_media');
+      form.append('image[]', new Blob([data], { type: `image/${meta.format}` }), `reference-${index}.${meta.format}`);
+    }
+    body = form;
+    headers = { Authorization: `Bearer ${image.token}` };
+  }
+  const response = await fetcher(referenceImages.length ? 'https://api.openai.com/v1/images/edits' : image.url, {
     method: 'POST',
-    headers: apiHeaders(image.token),
+    headers,
     signal: timeoutSignal(timeoutMs),
-    body: JSON.stringify({
-      model: image.model,
-      prompt: String(prompt || '').slice(0, 12000),
-      size: env.OPENAI_IMAGE_SIZE || '1088x1360',
-      quality: env.OPENAI_IMAGE_QUALITY || 'medium',
-      output_format: 'webp',
-      moderation: 'auto',
-    }),
+    body,
   });
   const payload = await jsonResponse(response, 'openai_image');
   const encoded = payload?.data?.[0]?.b64_json;
