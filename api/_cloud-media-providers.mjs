@@ -2,10 +2,11 @@ import crypto from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { experimental_generateVideo as generateVideo } from 'ai';
+import { createGateway } from '@ai-sdk/gateway';
 
 const OPENAI_IMAGE_URL = 'https://api.openai.com/v1/images/generations';
 const GATEWAY_IMAGE_URL = 'https://ai-gateway.vercel.sh/v1/images/generations';
-const GATEWAY_VIDEO_URL = 'https://ai-gateway.vercel.sh/v1/video/generate';
 const RUNWAY_BASE = 'https://api.dev.runwayml.com';
 const DEFAULT_SEEDANCE_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';
 const MAX_JSON_BYTES = 30 * 1024 * 1024;
@@ -100,60 +101,31 @@ async function generateGatewayVideo({ prompt, negativePrompt, duration, referenc
   if (!token || !model) throw new Error('gateway_video_not_configured');
   if (model.includes('-i2v') && !referenceImage?.data) throw new Error('ai_video_reference_required');
 
+  const usingOidc = !env.AI_GATEWAY_API_KEY && Boolean(env.VERCEL_OIDC_TOKEN);
+  const gateway = gatewayFactory({
+    apiKey: token,
+    fetch: fetcher,
+    ...(usingOidc ? { headers: { 'ai-gateway-auth-method': 'oidc' } } : {}),
+  });
   await onProgress?.(18, 'Vercel AI Gateway 正在提交人物一致性视频任务');
-  let result;
-  if (videoGenerator && gatewayFactory) {
-    const usingOidc = !env.AI_GATEWAY_API_KEY && Boolean(env.VERCEL_OIDC_TOKEN);
-    const gateway = gatewayFactory({
-      apiKey: token,
-      fetch: fetcher,
-      ...(usingOidc ? { headers: { 'ai-gateway-auth-method': 'oidc' } } : {}),
-    });
-    result = await videoGenerator({
-      model: gateway.videoModel(model),
-      prompt: String(prompt).slice(0, 2500),
-      duration: Math.max(3, Math.min(15, Number(duration) || 5)),
-      aspectRatio: '9:16',
-      generateAudio: false,
-      ...(referenceImage?.data ? { inputReferences: [{ data: referenceImage.data, mediaType: referenceImage.type || 'image/jpeg' }] } : {}),
-      providerOptions: gatewayProviderOptions(model, negativePrompt, env, maxWaitMs),
-      headers: { 'idempotency-key': idempotencyKey },
-      poll: { intervalMs: 5000, timeoutMs: maxWaitMs },
-    });
-  } else {
-    const usingOidc = !env.AI_GATEWAY_API_KEY && Boolean(env.VERCEL_OIDC_TOKEN);
-    const mediaType = referenceImage.type || 'image/jpeg';
-    const response = await fetcher(GATEWAY_VIDEO_URL, {
-      method: 'POST',
-      headers: apiHeaders(token, {
-        ...(usingOidc ? { 'ai-gateway-auth-method': 'oidc' } : {}),
-        'idempotency-key': idempotencyKey,
-      }),
-      signal: timeoutSignal(maxWaitMs + 30000),
-      body: JSON.stringify({
-        model,
-        prompt: {
-          image: `data:${mediaType};base64,${Buffer.from(referenceImage.data).toString('base64')}`,
-          text: String(prompt).slice(0, 2500),
-        },
-        duration: Math.max(3, Math.min(15, Number(duration) || 5)),
-        aspectRatio: '9:16',
-        generateAudio: false,
-        providerOptions: gatewayProviderOptions(model, negativePrompt, env, maxWaitMs),
-        poll: { intervalMs: 5000, timeoutMs: maxWaitMs },
-      }),
-    });
-    const payload = await jsonResponse(response, 'gateway_video');
-    result = payload?.result || payload;
-  }
+  const result = await videoGenerator({
+    model: gateway.videoModel(model),
+    prompt: {
+      image: referenceImage.data,
+      text: String(prompt).slice(0, 2500),
+    },
+    duration: Math.max(3, Math.min(15, Number(duration) || 5)),
+    aspectRatio: '9:16',
+    generateAudio: false,
+    providerOptions: gatewayProviderOptions(model, negativePrompt, env, maxWaitMs),
+    headers: { 'idempotency-key': idempotencyKey },
+    poll: { intervalMs: 5000, timeoutMs: maxWaitMs },
+  });
   const file = result?.videos?.[0];
-  const encoded = file?.base64 || file?.b64_json || (file?.type === 'base64' ? file?.data : null);
-  const data = file?.uint8Array
-    ? Buffer.from(file.uint8Array)
-    : encoded ? Buffer.from(encoded, 'base64')
-      : file?.url ? await downloadProviderVideo(file.url, fetcher, 60000) : null;
+  const data = file?.uint8Array ? Buffer.from(file.uint8Array) : null;
   if (!data || data.length < 1024 || data.length > MAX_VIDEO_BYTES) throw new Error('gateway_video_invalid_media');
-  const taskId = result?.providerMetadata?.gateway?.asyncJob?.jobId || result?.operation?.id || result?.id || `idempotency:${idempotencyKey}`;
+  const taskId = result?.providerMetadata?.gateway?.asyncJob?.jobId;
+  if (!taskId) throw new Error('gateway_video_missing_task_id');
   return { data, provider: 'vercel-ai-gateway', model, taskId, type: file.mediaType || 'video/mp4' };
 }
 
@@ -281,7 +253,7 @@ async function generateSeedanceVideo({ prompt, duration, env, fetcher, sleeper, 
   return { data: await downloadProviderVideo(outputUrl, fetcher, 60000), provider: 'seedance', model, taskId };
 }
 
-export async function generateAiVideoClip({ prompt, negativePrompt = '', duration = 5, referenceImage, idempotencyKey = crypto.randomUUID(), env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, maxWaitMs, videoGenerator = null, gatewayFactory = null }) {
+export async function generateAiVideoClip({ prompt, negativePrompt = '', duration = 5, referenceImage, idempotencyKey = crypto.randomUUID(), env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, maxWaitMs, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (!enabled(env)) throw new Error('ai_media_generation_disabled');
   const provider = configuredVideoProvider(env);
   if (!provider) throw new Error('ai_video_provider_not_configured');
@@ -311,7 +283,7 @@ function negativeVisualPrompt(job) {
   return `identity drift, different person, face morphing, distorted anatomy, extra fingers, deformed hands, duplicate people, text, letters, captions, subtitles, logos, watermarks, QR codes, UI text${exclusions ? `; ${exclusions}` : ''}`;
 }
 
-export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, videoGenerator = null, gatewayFactory = null }) {
+export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
   const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook');
   const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta');
