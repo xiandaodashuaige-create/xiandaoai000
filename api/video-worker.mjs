@@ -21,23 +21,10 @@ function env(name) {
 
 function authorised(req) {
   const supplied = String(req.headers['x-video-access'] || '');
-  const candidates = [process.env.VIDEO_AGENT_ACCESS, process.env.VIDEO_WORKER_CANARY_ACCESS]
-    .filter(Boolean)
-    .map(String);
-  return supplied.length > 0 && candidates.some((expected) => {
-    const a = crypto.createHash('sha256').update(supplied).digest();
-    const b = crypto.createHash('sha256').update(expected).digest();
-    return crypto.timingSafeEqual(a, b);
-  });
-}
-
-function canaryAuthorised(req) {
-  const supplied = String(req.headers['x-video-access'] || '');
-  const expected = String(process.env.VIDEO_WORKER_CANARY_ACCESS || '');
-  if (!supplied || !expected) return false;
-  const a = crypto.createHash('sha256').update(supplied).digest();
-  const b = crypto.createHash('sha256').update(expected).digest();
-  return crypto.timingSafeEqual(a, b);
+  const expected = env('VIDEO_AGENT_ACCESS');
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function headers() {
@@ -245,15 +232,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });
-    if (req.body?.action === 'image_canary') {
-      if (!canaryAuthorised(req)) return res.status(401).json({ error: 'canary_unauthorized' });
-      const generated = await generateOpenAiImage({ prompt: String(req.body.prompt || ''), env: mediaEnv });
-      res.setHeader('Content-Type', 'image/png');
-      res.setHeader('X-Image-Provider', generated.provider);
-      res.setHeader('X-Image-Model', generated.model);
-      res.setHeader('X-Source-SHA256', generated.sha256);
-      return res.status(200).send(generated.data);
-    }
     const result = await runOne(env('VIDEO_AGENT_ACCESS'), mediaEnv);
     return res.status(result.ok ? 200 : 202).json(result);
   } catch (error) {
