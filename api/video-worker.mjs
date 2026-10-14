@@ -266,7 +266,7 @@ async function heartbeat(accessCode, jobId, stage, progress) {
   await rpc('video_agent_worker_heartbeat', { p_access: accessCode, p_job_id: jobId, p_worker_id: WORKER, p_stage: stage, p_progress: progress });
 }
 
-async function runOne(accessCode, mediaEnv = process.env) {
+export async function runOne(accessCode, mediaEnv = process.env) {
   const job = await rpc('video_agent_claim_cloud_job', { p_access: accessCode, p_worker_id: WORKER });
   if (!job?.id) return { ok: true, claimed: false };
   try {
