@@ -240,6 +240,10 @@ export async function renderPoster(job, input) {
   const titleTop = styleKey === 'documentary' ? Math.round(height * .50) : Math.round(height * .15);
   const factsTop = titleTop + Number(titleMeta.height || 130) + Math.round(height * .035);
   const ctaTop = Math.min(height - 120, Math.max(height - 150, factsTop + cards.height + Math.round(height * .035)));
+  const ctaLayer = await sharp({ create: { width: ctaWidth, height: 92, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
+    { input: ctaBg, top: 0, left: 0 },
+    { input: ctaText, top: Math.max(10, Math.round((92 - Number(ctaMeta.height || 50)) / 2)), left: 36 },
+  ]).png().toBuffer();
 
   return sharp(base).composite([
     { input: shade, top: 0, left: 0 },
@@ -247,8 +251,7 @@ export async function renderPoster(job, input) {
     { input: brandText, top: Math.round(height * .065) + 12, left: margin + 22 },
     { input: titleText, top: titleTop, left: margin },
     { input: cards.data, top: factsTop, left: margin },
-    { input: ctaBg, top: ctaTop, left: margin },
-    { input: ctaText, top: ctaTop + Math.max(10, Math.round((92 - Number(ctaMeta.height || 50)) / 2)), left: margin + 36 },
+    { input: ctaLayer, top: ctaTop, left: margin },
   ]).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
