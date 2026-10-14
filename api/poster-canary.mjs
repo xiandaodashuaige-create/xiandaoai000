@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     ...process.env,
     AI_MEDIA_GENERATION_ENABLED: 'true',
     OPENAI_IMAGE_MODEL: 'recraft/recraft-v4.1-flash',
-    OPENAI_IMAGE_SIZE: '1024x1365',
+    OPENAI_IMAGE_SIZE: '1024x1024',
     VERCEL_OIDC_TOKEN: oidcToken,
   });
   return res.status(result.ok ? 200 : 202).json(result);
