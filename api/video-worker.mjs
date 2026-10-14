@@ -135,7 +135,7 @@ const POSTER_STYLES = {
   },
   beige_omnichannel: {
     label: 'warm beige omnichannel technology advertising',
-    prompt: 'A confident Asian beauty salon owner consulting in a bright modern salon, positioned on the right third. Warm ivory, beige, champagne and subtle rose-gold palette, clean editorial technology aesthetic. Keep the left sixty percent simple and bright for an omnichannel flow.',
+    prompt: 'A confident Asian female beauty salon owner or manager in polished professional business attire, standing or seated upright with a tablet while reviewing customer acquisition work in a bright modern salon, positioned on the right third. She is clearly the business decision maker: no spa robe, no towel, no treatment pose, not receiving a beauty service, not a consumer. Warm ivory, beige, champagne and subtle rose-gold palette, clean editorial technology aesthetic. Keep the left sixty percent simple and bright for an omnichannel flow.',
     title: '#2a211d', fact: '#4f4038', accent: '#b66c4d', ctaText: '#fffaf6',
   },
   documentary: {
@@ -228,10 +228,11 @@ export async function renderPoster(job, input) {
   const ctaBg = roundedRect(ctaWidth, 92, style.accent, 46);
   const layoutWidth = styleKey === 'black_gold'
     ? Math.round(width * .60)
-    : styleKey === 'beige_omnichannel' || styleKey === 'wine_process' ? Math.round(width * .55) : contentWidth;
+    : styleKey === 'beige_omnichannel' ? Math.round(width * .60)
+      : styleKey === 'wine_process' ? Math.round(width * .55) : contentWidth;
   const [brandText, titleText, cards, ctaText] = await Promise.all([
     textLayer(brand.slice(0, 28), font, Math.round(width * .030), brandWidth - 44, styleKey === 'beige_omnichannel' ? '#fffaf5' : style.accent, 700),
-    textLayer(title, font, Math.round(width * (styleKey === 'beige_omnichannel' ? .066 : .071)), layoutWidth, style.title, 800),
+    textLayer(title, font, Math.round(width * (styleKey === 'beige_omnichannel' ? .058 : .071)), layoutWidth, style.title, 800),
     factCards(facts, font, layoutWidth, style, styleKey === 'wine_process'),
     textLayer(cta, font, Math.round(width * .041), ctaWidth - 72, style.ctaText, 800),
   ]);
