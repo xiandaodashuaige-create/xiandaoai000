@@ -9,12 +9,12 @@ import { industryStoryboard } from '../api/_cloud-industry.mjs';
 import { overlayPng, normalizeSegment, normalizeLoudness, inspectRender } from '../api/_cloud-video.mjs';
 
 // Offline render-spec regression: fixed synthetic fixture, no Edge TTS / network.
-// Asserts the final cloud output spec: 1080x1920, 30 fps (matches local worker), -14 LUFS target.
+// Asserts the final cloud output spec: 1080x1920, 30 fps (matches local worker), -16 LUFS target.
 const dir = () => mkdtempSync(path.join(tmpdir(), 'render-spec-'));
 
 const probe = (file) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_streams', file], { encoding: 'utf8' }));
 
-test('final segment is 1080x1920 at 30 fps and loudness-normalised to -14 LUFS', async () => {
+test('final segment is 1080x1920 at 30 fps and loudness-normalised to -16 LUFS', async () => {
   const work = dir();
   const source = path.join(work, 'source.mp4');
   execFileSync(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=30:duration=4',
@@ -35,7 +35,7 @@ test('final segment is 1080x1920 at 30 fps and loudness-normalised to -14 LUFS',
 
   const measure = spawnSync(ffmpegPath, ['-hide_banner', '-nostats', '-i', normalised, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
   const integrated = Number(measure.stderr.split('Summary:')[1].match(/I:\s+(-?[\d.]+)\s+LUFS/)[1]);
-  assert.ok(Math.abs(integrated - -14) <= 1, `integrated ${integrated}`);
+  assert.ok(Math.abs(integrated - -16) <= 1, `integrated ${integrated}`);
   const quality = await inspectRender(normalised, 2);
   assert.equal(quality.width, 1080);
   assert.equal(quality.height, 1920);

@@ -13,8 +13,8 @@ const WIDTH = 1080;
 const HEIGHT = 1920;
 const K = WIDTH / 720;
 const px = (value) => Math.round(value * K);
-// Social-platform loudness target; the final pass normalises every render to it.
-const LOUDNESS = { I: -14, TP: -1.5, LRA: 11 };
+// Same loudness as the local worker's voice and final mix (EBU R128 -16 LUFS).
+const LOUDNESS = { I: -16, TP: -1.5, LRA: 11 };
 const FPS = 30; // local worker renders 30fps
 const SEGMENT_SECONDS = 5;
 const MIN_VIDEO_KBPS = 800;
@@ -159,17 +159,26 @@ export async function overlayPng(scene, output) {
       y += h + px(18);
     }
   }
-  if (template === 'cta_offer' && scene.button) {
-    const label = await text(scene.button, px(560), px(34), '#00130b', 800, 'centre');
-    if (label) {
-      const h = px(84);
-      shapes.push(`<rect x="${px(60)}" y="${px(1190)}" width="${px(600)}" height="${h}" rx="${px(42)}" fill="#21d17d"/>`);
-      composites.push({ input: label.image, top: px(1190) + Math.round((h - label.height) / 2), left: px(80) });
+  // CTA: gold offer card with a dark pill and a green WhatsApp button, as in
+  // the local worker. The first line of the copy is the offer, the second the
+  // call to action.
+  if (template === 'cta_offer') {
+    const [line1 = '', line2 = ''] = String(scene.title || '').split('\n');
+    const offer = await text(line1, px(540), px(60), '#3a2a10', 900, 'centre');
+    const action = await text(line2, px(460), px(34), '#f6e7b5', 800, 'centre');
+    const label = await text(scene.button || 'WhatsApp 預約', px(380), px(36), '#ffffff', 800, 'centre');
+    shapes.push(`<rect x="${px(70)}" y="${px(430)}" width="${px(580)}" height="${px(290)}" rx="${px(36)}" fill="url(#gold)"/>`);
+    if (offer) composites.push({ input: offer.image, top: px(480), left: px(90) });
+    if (action) {
+      shapes.push(`<rect x="${px(110)}" y="${px(600)}" width="${px(500)}" height="${px(72)}" rx="${px(36)}" fill="#1f1606"/>`);
+      composites.push({ input: action.image, top: px(600) + Math.round((px(72) - action.height) / 2), left: px(130) });
     }
+    shapes.push(`<rect x="${px(150)}" y="${px(760)}" width="${px(420)}" height="${px(92)}" rx="${px(46)}" fill="#25d366"/>`);
+    if (label) composites.push({ input: label.image, top: px(760) + Math.round((px(92) - label.height) / 2), left: px(170) });
   }
 
   // Main title: centred, bold, with a dark shadow for legibility.
-  const title = await text(scene.title, px(624), px(58), '#ffffff', 800, 'centre');
+  const title = template === 'cta_offer' ? null : await text(scene.title, px(624), px(58), '#ffffff', 800, 'centre');
   const titleTop = title ? Math.max(px(760), px(1000) - title.height) : 0;
   if (title) {
     const shadow = await text(scene.title, px(624), px(58), '#000000', 800, 'centre');
@@ -185,7 +194,7 @@ export async function overlayPng(scene, output) {
   }
 
   const svg = Buffer.from(`<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000000" stop-opacity="0"/><stop offset=".5" stop-color="#000000" stop-opacity=".15"/><stop offset="1" stop-color="#000000" stop-opacity=".6"/></linearGradient></defs>
+    <defs><linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4e2a8"/><stop offset=".5" stop-color="#c9a24e"/><stop offset="1" stop-color="#f1d98c"/></linearGradient><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000000" stop-opacity="0"/><stop offset=".5" stop-color="#000000" stop-opacity=".15"/><stop offset="1" stop-color="#000000" stop-opacity=".6"/></linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#shade)"/>
     ${shapes.join('\n')}
   </svg>`);
@@ -209,7 +218,7 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
   await run([
     '-y', ...input, ...audioInput, '-i', overlay,
     '-filter_complex', videoFilter, '-map', '[v]', '-map', audioMap,
-    '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '10', '-maxrate', '20M', '-bufsize', '40M',
+    '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-maxrate', '16M', '-bufsize', '32M',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2', output,
   ], path.dirname(output));
 }
@@ -294,7 +303,7 @@ export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeo
   return { ok: true, path: track };
 }
 
-export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}) {
+export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}, options = {}) {
   const workdir = path.join('/tmp', `video-${job.id}`);
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
@@ -309,7 +318,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   let voiceSource = uploadedVoice ? 'uploaded' : 'none';
   let voiceError = null;
   if (!uploadedVoice) {
-    const timed = await renderVoiceTrack({ job, scenes, workdir });
+    const timed = await renderVoiceTrack({ job, scenes, workdir, synthesize: options.synthesize });
     if (timed.ok) {
       voice = timed.path;
       voiceSource = 'tts';

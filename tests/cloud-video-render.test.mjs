@@ -25,7 +25,7 @@ test('every storyboard template renders a 1080x1920 overlay', async () => {
   }
 });
 
-test('final audio is normalised to the -14 LUFS social target', async () => {
+test('final audio is normalised to the -16 LUFS local target', async () => {
   const input = path.join(dir(), 'quiet.mp4');
   execFileSync(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=360x640:rate=25:duration=6',
     '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-af', 'volume=0.05', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
@@ -34,7 +34,7 @@ test('final audio is normalised to the -14 LUFS social target', async () => {
   await normalizeLoudness(input, output);
   const measure = spawnSync(ffmpegPath, ['-hide_banner', '-nostats', '-i', output, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' });
   const integrated = Number(measure.stderr.split('Summary:')[1].match(/I:\s+(-?[\d.]+)\s+LUFS/)[1]);
-  assert.ok(Math.abs(integrated - -14) <= 1, `integrated ${integrated}`);
+  assert.ok(Math.abs(integrated - -16) <= 1, `integrated ${integrated}`);
 });
 
 test('scene start points match the local worker on the same 39s clip', () => {
