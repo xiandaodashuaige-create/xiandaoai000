@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob } from './_cloud-tts.mjs';
@@ -149,6 +149,49 @@ export function selectSceneSources(inputs) {
   return [pick(hook), pick(proof, 0), pick(proof, 1), pick(proof, 2), pick(cta)].filter(Boolean);
 }
 
+function compactLine(value) {
+  return String(value || '').replace(/\s*\n\s*/g, '｜').replace(/\s+/g, ' ').trim();
+}
+
+// A single source cannot honestly look like a five-source montage. In that
+// case use a sparse, shorter cut instead of covering the same footage with
+// five unrelated UI templates. The warning is returned in artifact metadata
+// so operators know that more source footage is still needed for a true mix.
+export function sparseStoryboardForSingleSource(scenes, sources, targetSeconds = 13) {
+  const unique = new Set(sources.map((source) => source?.localPath).filter(Boolean));
+  if (unique.size > 1) return { applied: false, warning: null, scenes };
+  const originalTotal = scenes.reduce((sum, scene) => sum + (Number(scene.seconds) || SEGMENT_SECONDS), 0);
+  const wantedTotal = Math.min(originalTotal, targetSeconds);
+  const baseDurations = [3, 6, 4];
+  const scale = wantedTotal / baseDurations.reduce((sum, value) => sum + value, 0);
+  const durations = baseDurations.map((value) => Math.round(value * scale * 10) / 10);
+  durations[durations.length - 1] = Math.round((durations.at(-1) + wantedTotal - durations.reduce((sum, value) => sum + value, 0)) * 10) / 10;
+  const english = scenes.some((scene) => /[A-Za-z]{4}/.test(String(scene.title || scene.vo || '')) && !/[\u3400-\u9fff]/.test(String(scene.title || scene.vo || '')));
+  const fullHook = compactLine(scenes[0]?.title);
+  const hook = fullHook.includes('？') ? `${fullHook.split('？')[0]}？` : fullHook.includes('?') ? `${fullHook.split('?')[0]}?` : fullHook;
+  const selected = [scenes[0], scenes[2], scenes.at(-1)];
+  const titles = [
+    hook,
+    english ? 'Real service｜Real process' : '真人手法｜真實過程',
+    scenes[4]?.title,
+  ];
+  const compact = selected.map((scene, index) => {
+    const title = compactLine(titles[index]);
+    return {
+      ...scene,
+      template: index === selected.length - 1 ? 'clean_cta' : 'clean_caption',
+      title,
+      subtitle: '',
+      cards: undefined,
+      messages: undefined,
+      showSubtitle: false,
+      seconds: durations[index],
+      vo: title ? `${title.replaceAll('｜', '，')}。` : scene.vo,
+    };
+  });
+  return { applied: true, warning: 'single_visual_source_limited_diversity', scenes: compact };
+}
+
 export function renderWorkdirFor(jobId) {
   // Inputs are downloaded to /tmp/video-<jobId>. Rendering must never clean
   // that same directory or the worker deletes its own source files.
@@ -247,12 +290,28 @@ export async function overlayPng(scene, output) {
     if (label) composites.push({ input: label.image, top: buttonTop + Math.round((buttonH - label.height) / 2), left: px(170) });
   }
 
+  // Compact CTA for real-footage remixes. It keeps the service visible and
+  // avoids the large offer card/phone mock-up taking over the whole frame.
+  if (template === 'clean_cta') {
+    const title = await text(compactLine(scene.title), px(560), px(42), '#ffffff', 800, 'centre');
+    const label = await text(scene.button || 'WhatsApp 預約', px(360), px(32), '#ffffff', 800, 'centre');
+    const top = px(820);
+    shapes.push(`<rect x="${px(45)}" y="${top}" width="${px(630)}" height="${px(300)}" rx="${px(28)}" fill="#111111" fill-opacity=".76"/>`);
+    if (title) composites.push({ input: title.image, top: top + px(38), left: px(80) });
+    shapes.push(`<rect x="${px(170)}" y="${top + px(185)}" width="${px(380)}" height="${px(78)}" rx="${px(39)}" fill="#25d366"/>`);
+    if (label) composites.push({ input: label.image, top: top + px(185) + Math.round((px(78) - label.height) / 2), left: px(180) });
+  }
+
   // Main title: centred, bold, with a dark shadow for legibility.
-  const title = template === 'cta_offer' ? null : await text(scene.title, px(624), px(58), '#ffffff', 800, 'centre');
+  const title = ['cta_offer', 'clean_cta'].includes(template) ? null : await text(scene.title, px(624), template === 'clean_caption' ? px(48) : px(58), '#ffffff', 800, 'centre');
   const titleTop = title ? Math.max(px(760), px(1000) - title.height) : 0;
   if (title) {
-    const shadow = await text(scene.title, px(624), px(58), '#000000', 800, 'centre');
-    composites.push({ input: shadow.image, top: titleTop + px(3), left: px(48) + px(3) });
+    if (template === 'clean_caption') {
+      shapes.push(`<rect x="${px(30)}" y="${titleTop - px(22)}" width="${px(660)}" height="${title.height + px(44)}" rx="${px(18)}" fill="#000000" fill-opacity=".62"/>`);
+    } else {
+      const shadow = await text(scene.title, px(624), px(58), '#000000', 800, 'centre');
+      composites.push({ input: shadow.image, top: titleTop + px(3), left: px(48) + px(3) });
+    }
     composites.push({ input: title.image, top: titleTop, left: px(48) });
   }
   // Subtitle sits in a translucent caption bar, as in the local worker.
@@ -275,9 +334,9 @@ function validCrop(value) {
   return /^\d{2,4}:\d{2,4}:\d{1,4}:\d{1,4}$/.test(String(value || '')) ? String(value) : null;
 }
 
-export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0, loop = false, cropOverride = null, fitMode = 'fill' }) {
+export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0, loop = false, cropOverride = null, fitMode = 'fill', focusX = 0.5, preserveSourceAudio = false, overlaySeconds = seconds }) {
   const isImage = String(type || '').startsWith('image/');
-  const hasAudio = !isImage && await sourceHasAudio(source);
+  const hasAudio = preserveSourceAudio && !isImage && await sourceHasAudio(source);
   // Seek before the input so each scene starts at its own point in the footage.
   const input = isImage
     ? ['-loop', '1', '-framerate', String(FPS), '-i', source]
@@ -286,12 +345,14 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
   const overlayIndex = hasAudio ? 1 : 2;
   const crop = isImage ? null : validCrop(cropOverride);
   const cropFilter = crop ? `crop=${crop},` : '';
+  const safeFocusX = Math.max(0, Math.min(1, Number(focusX) || 0.5));
   const baseFilter = isImage
     ? `[0:v]scale=${WIDTH * 2}:${HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${WIDTH * 2}:${HEIGHT * 2},zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${Math.ceil(seconds * FPS)}:s=${WIDTH}x${HEIGHT}:fps=${FPS},setsar=1[base]`
     : fitMode === 'contain_blur'
       ? `[0:v]${cropFilter}split=2[fg0][bg0];[bg0]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=28,fps=${FPS},setsar=1[bg];[fg0]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,fps=${FPS},setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[base]`
-      : `[0:v]${cropFilter}scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},fps=${FPS},setsar=1[base]`;
-  const videoFilter = `${baseFilter};[${overlayIndex}:v]format=rgba,fade=t=in:st=0:d=0.22:alpha=1[ol];[base][ol]overlay=0:0:format=auto[v]`;
+      : `[0:v]${cropFilter}scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT}:x='(iw-ow)*${safeFocusX.toFixed(3)}':y='(ih-oh)/2',fps=${FPS},setsar=1[base]`;
+  const overlayOut = Math.max(0.22, Number(overlaySeconds) - 0.22);
+  const videoFilter = `${baseFilter};[${overlayIndex}:v]format=rgba,fade=t=in:st=0:d=0.22:alpha=1,fade=t=out:st=${overlayOut.toFixed(3)}:d=0.22:alpha=1[ol];[base][ol]overlay=0:0:format=auto[v]`;
   const audioMap = hasAudio ? '0:a:0' : '1:a:0';
   await run([
     '-y', ...input, ...audioInput, '-loop', '1', '-framerate', String(FPS), '-i', overlay,
@@ -354,7 +415,7 @@ export async function normalizeLoudness(input, output) {
   return output;
 }
 
-export async function inspectRender(file, expectedDuration) {
+export async function inspectRender(file, expectedDuration, { allowSilent = false } = {}) {
   const log = await run(['-hide_banner', '-i', file, '-af', 'ebur128=peak=true', '-f', 'null', '-'], path.dirname(file));
   const video = log.match(/Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b[^\n]*?(\d+(?:\.\d+)?)\s*fps/);
   const bitrate = Number(log.match(/Duration:[^\n]*bitrate:\s*(\d+)\s*kb\/s/)?.[1] || 0);
@@ -375,8 +436,8 @@ export async function inspectRender(file, expectedDuration) {
   if (Math.abs(metadata.fps - FPS) >= 0.5) failures.push(`fps_${metadata.fps}`);
   if (Math.abs(metadata.durationSeconds - expectedDuration) > 1) failures.push(`duration_${metadata.durationSeconds}`);
   if (metadata.bitrateKbps < MIN_VIDEO_KBPS) failures.push(`bitrate_${metadata.bitrateKbps}`);
-  if (metadata.loudnessLUFS === null || metadata.loudnessLUFS < -17 || metadata.loudnessLUFS > -11) failures.push(`loudness_${metadata.loudnessLUFS}`);
-  if (metadata.truePeakDBTP === null || metadata.truePeakDBTP > -1) failures.push(`true_peak_${metadata.truePeakDBTP}`);
+  if (!allowSilent && (metadata.loudnessLUFS === null || metadata.loudnessLUFS < -17 || metadata.loudnessLUFS > -11)) failures.push(`loudness_${metadata.loudnessLUFS}`);
+  if (!allowSilent && (metadata.truePeakDBTP === null || metadata.truePeakDBTP > -1)) failures.push(`true_peak_${metadata.truePeakDBTP}`);
   if (failures.length) throw new Error(`cloud_render_quality_failed:${failures.join(',')}`);
   return metadata;
 }
@@ -420,7 +481,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const workdir = renderWorkdirFor(job.id);
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
-  const scenes = copyFor(job);
+  let scenes = copyFor(job);
   const reference = downloadedInputs.find((item) => item.role === 'reference');
   const pacing = await referencePacing(reference, scenes.map((scene) => scene.seconds ?? SEGMENT_SECONDS));
   scenes.forEach((scene, index) => { scene.seconds = pacing.durations[index] ?? scene.seconds; });
@@ -428,6 +489,8 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const activeInputs = prepared.inputs;
   const visual = selectSceneSources(activeInputs);
   if (!visual.length) throw new Error('missing_visual_input');
+  const sparse = sparseStoryboardForSingleSource(scenes, visual);
+  scenes = sparse.scenes;
   const uploadedVoice = activeInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = activeInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   let voice = uploadedVoice || null;
@@ -451,7 +514,11 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   }
   for (let index = 0; index < scenes.length; index += 1) {
     const source = visual[index] || visual[index % visual.length];
-    const start = sceneStarts(durationBySource.get(source.localPath) || 0, scenes, source)[index];
+    const customStarts = source.scene_starts ?? source.sceneStarts;
+    const customStart = Array.isArray(customStarts) ? Number(customStarts[index]) : NaN;
+    const start = Number.isFinite(customStart)
+      ? customStart
+      : sceneStarts(durationBySource.get(source.localPath) || 0, scenes, source)[index];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
@@ -463,6 +530,11 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
       source: source.localPath, type: source.type, overlay, output: segment,
       seconds: renderSeconds, start, loop, cropOverride: source.crop,
       fitMode: source.fit_mode ?? source.fitMode ?? 'fill',
+      focusX: Array.isArray(source.focus_x ?? source.focusX)
+        ? (source.focus_x ?? source.focusX)[index]
+        : (source.focus_x ?? source.focusX ?? 0.5),
+      preserveSourceAudio: source.preserve_audio === true || source.preserveAudio === true,
+      overlaySeconds: wanted,
     });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
@@ -472,13 +544,24 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await assembleWithTransitions({ segments, durations, output: assembled, workdir });
   const finalPath = path.join(workdir, 'final-cloud.mp4');
   const mixed = await mixAudio(assembled, voice, bgm, path.join(workdir, 'mixed.mp4'));
-  const result = await normalizeLoudness(mixed, finalPath);
+  const hasMeaningfulAudio = Boolean(
+    voice || bgm || visual.some((source) => source.preserve_audio === true || source.preserveAudio === true),
+  );
+  const result = hasMeaningfulAudio
+    ? await normalizeLoudness(mixed, finalPath)
+    : (await copyFile(mixed, finalPath), finalPath);
   const expectedDuration = durations.reduce((sum, value) => sum + value, 0);
-  const quality = await inspectRender(result, expectedDuration);
+  const quality = await inspectRender(result, expectedDuration, { allowSilent: !hasMeaningfulAudio });
   await onProgress(90, '云端成片已生成，正在质检与回传');
   return {
     data: await readFile(result), durationSeconds: expectedDuration, width: WIDTH, height: HEIGHT,
     voiceSource, voiceProvider, voiceError, quality, mediaGeneration: prepared.generation,
     pacing: { ...pacing, finalDurations: durations }, transitionSeconds: TRANSITION_SECONDS,
+    contentQuality: {
+      uniqueVisualSources: new Set(visual.map((source) => source.localPath)).size,
+      sparseLayout: sparse.applied,
+      warning: sparse.warning,
+      audioStatus: hasMeaningfulAudio ? 'present' : 'silent_wrong_source_audio_removed',
+    },
   };
 }

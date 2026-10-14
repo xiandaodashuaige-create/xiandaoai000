@@ -14,7 +14,11 @@ import { industryStoryboard } from '../api/_cloud-industry.mjs';
 const dir = () => mkdtempSync(path.join(tmpdir(), 'render-test-'));
 
 test('every storyboard template renders a 1080x1920 overlay', async () => {
-  const scenes = industryStoryboard({ brief: '業務主題：肩頸按摩' });
+  const scenes = [
+    ...industryStoryboard({ brief: '業務主題：肩頸按摩' }),
+    { template: 'clean_caption', title: '真人手法｜真實過程', showSubtitle: false },
+    { template: 'clean_cta', title: 'WhatsApp 預約肩頸放鬆體驗', button: 'WhatsApp 預約', showSubtitle: false },
+  ];
   for (const [index, scene] of scenes.entries()) {
     const output = path.join(dir(), `overlay-${index}.png`);
     await overlayPng(scene, output);

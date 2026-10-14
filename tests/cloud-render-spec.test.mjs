@@ -24,7 +24,7 @@ test('final segment is 1080x1920 at 30 fps and loudness-normalised to -16 LUFS',
   const overlay = path.join(work, 'overlay.png');
   await overlayPng(scene, overlay);
   const segment = path.join(work, 'segment.mp4');
-  await normalizeSegment({ source, type: 'video/mp4', overlay, output: segment, seconds: 2 });
+  await normalizeSegment({ source, type: 'video/mp4', overlay, output: segment, seconds: 2, preserveSourceAudio: true });
   const normalised = path.join(work, 'final.mp4');
   await normalizeLoudness(segment, normalised);
 

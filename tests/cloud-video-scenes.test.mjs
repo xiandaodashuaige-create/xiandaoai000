@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { copyFor, renderWorkdirFor, sceneStarts, selectSceneSources } from '../api/_cloud-video.mjs';
+import { copyFor, renderWorkdirFor, sceneStarts, selectSceneSources, sparseStoryboardForSingleSource } from '../api/_cloud-video.mjs';
 
 const visual = (name, role, extra = {}) => ({ name, role, type: 'video/mp4', ...extra });
 
@@ -51,4 +51,23 @@ test('same-line hook and CTA markers do not leak into each other', () => {
   const scenes = copyFor({ brief: '業務主題：美容院 1. AI生成开头 Hook：每天回覆仍然漏客？ 3. AI生成结尾 CTA：立即預約診斷' });
   assert.equal(scenes[0].title, '每天回覆仍然漏客？');
   assert.equal(scenes.at(-1).title, '立即預約診斷');
+});
+
+test('one visual source gets a short sparse layout instead of five competing UI templates', () => {
+  const scenes = copyFor({ brief: '業務主題：肩頸按摩' });
+  const one = visual('massage.mp4', 'main', { localPath: '/tmp/massage.mp4' });
+  const result = sparseStoryboardForSingleSource(scenes, [one, one, one, one, one]);
+  assert.equal(result.applied, true);
+  assert.equal(result.warning, 'single_visual_source_limited_diversity');
+  assert.equal(result.scenes.length, 3);
+  assert.ok(Math.abs(result.scenes.reduce((sum, scene) => sum + scene.seconds, 0) - 13) < 0.01);
+  assert.ok(result.scenes.slice(0, -1).every((scene) => scene.template === 'clean_caption'));
+  assert.equal(result.scenes.at(-1).template, 'clean_cta');
+  assert.ok(result.scenes.every((scene) => scene.showSubtitle === false));
+  assert.equal(result.scenes[0].title.includes('先看'), false);
+
+  const many = sparseStoryboardForSingleSource(scenes, [
+    { ...one, localPath: '/tmp/a.mp4' }, { ...one, localPath: '/tmp/b.mp4' },
+  ]);
+  assert.equal(many.applied, false);
 });
