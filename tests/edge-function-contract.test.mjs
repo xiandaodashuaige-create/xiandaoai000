@@ -33,4 +33,6 @@ test('provider feedback is tenant scoped before project memory is updated', () =
   assert.match(providerBlock, /video_agent_record_feedback/);
   assert.ok(providerBlock.indexOf('video_agent_provider_get_job') < providerBlock.indexOf('video_agent_record_feedback'));
   assert.match(providerBlock, /scopedJob\.video_project_id/);
+  assert.match(providerBlock, /p_content:\s*feedbackText/);
+  assert.match(providerBlock, /p_metadata:/);
 });
