@@ -10,6 +10,7 @@ import {
   mediaProviderCapabilities,
   prepareAiHybridAssets,
 } from '../api/_cloud-media-providers.mjs';
+import { posterGenerationPrompt, posterStyleFromBrief } from '../api/video-worker.mjs';
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { 'content-type': 'application/json' },
@@ -167,6 +168,34 @@ test('poster UI permits an empty main image and the worker uses only role=main a
   assert.match(worker, /async function posterSource\(main, jobId\)/);
   assert.match(worker, /'-ss', '1'.*'-frames:v', '1'/s);
   assert.doesNotMatch(worker, /video_poster_source_requires_local_ffmpeg/);
+  assert.match(ui, /id="posterStyle"/);
+  assert.match(ui, /黑金高端/);
+  assert.match(ui, /酒红流程/);
+  assert.match(ui, /米白科技/);
+  assert.match(worker, /job\.workflow_mode === 'image_poster' && !hasLocalPosterSource/);
+  assert.match(worker, /p_status: 'failed'/);
+});
+
+test('poster style selection maps historical omnichannel targets and keeps generated pixels text-free', () => {
+  const brief = `【项目隔离信息｜只能使用本项目资料】
+业务类型：香港美业AI获客服务
+目标客户：香港美容院老板
+【本次制作需求】
+视觉风格：auto
+主标题：AI美業全渠道獲客系統
+核心卖点与准确事实：FB、IG、小紅書、Google同步引流｜顧客直達WhatsApp
+品牌：LULIAN AI`;
+  assert.equal(posterStyleFromBrief(brief), 'beige_omnichannel');
+  const prompt = posterGenerationPrompt({ brief, project_name: '广告海报' });
+  assert.match(prompt, /beauty salon owners|香港美容院老板/);
+  assert.match(prompt, /warm beige omnichannel technology advertising/);
+  assert.match(prompt, /not a consumer massage promotion/);
+  assert.match(prompt, /Do not render any words/);
+});
+
+test('explicit historical poster style wins over automatic keyword matching', () => {
+  const brief = '视觉风格：black_gold\n主标题：全渠道获客\n核心卖点与准确事实：FB｜IG｜Google';
+  assert.equal(posterStyleFromBrief(brief), 'black_gold');
 });
 
 test('capability endpoint separates installed adapters from configured providers', async () => {
