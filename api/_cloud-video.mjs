@@ -314,7 +314,9 @@ export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeo
 }
 
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}, options = {}) {
-  const workdir = path.join('/tmp', `video-${job.id}`);
+  // Inputs live in /tmp/video-<job>/input-*. Clean only render intermediates;
+  // deleting the job root here destroys the sources downloaded by the worker.
+  const workdir = path.join('/tmp', `video-${job.id}`, 'render');
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const scenes = copyFor(job);

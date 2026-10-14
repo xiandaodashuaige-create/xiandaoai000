@@ -75,3 +75,9 @@ test('one failed scene voice means no voice at all, never a partial narration', 
   assert.equal(result.ok, false);
   assert.match(result.reason, /scene_2_tts_down/);
 });
+
+test('cloud render cleans only its child directory and preserves downloaded inputs', () => {
+  const source = readFileSync(new URL('../api/_cloud-video.mjs', import.meta.url), 'utf8');
+  assert.match(source, /path\.join\('\/tmp', `video-\$\{job\.id\}`, 'render'\)/);
+  assert.doesNotMatch(source, /const workdir = path\.join\('\/tmp', `video-\$\{job\.id\}`\);/);
+});
