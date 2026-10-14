@@ -222,20 +222,16 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
   ];
   if (!missing.length) return { inputs: downloadedInputs, generation: [] };
   const capabilities = mediaProviderCapabilities(env);
-  if (!capabilities.video && !capabilities.image) throw new Error('ai_media_provider_not_configured');
+  // AI Hybrid is a video-generation workflow. Still-image generation is useful
+  // for posters, but silently substituting stills here would falsely report that
+  // AI video generation succeeded.
+  if (!capabilities.video) throw new Error('ai_video_provider_not_configured');
   const generated = await Promise.all(missing.map(async (item, index) => {
     const prompt = visualPrompt(job, item.scene, item.position);
-    if (capabilities.video) {
-      const result = await generateAiVideoClip({ prompt, duration: item.scene?.seconds || 5, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS });
-      const localPath = path.join(workdir, `${item.role}-${index}.mp4`);
-      await writeFile(localPath, result.data);
-      return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256 } };
-    }
-    const result = await generateOpenAiImage({ prompt, env, fetcher });
-    const extension = result.type === 'image/png' ? '.png' : result.type === 'image/jpeg' ? '.jpg' : '.webp';
-    const localPath = path.join(workdir, `${item.role}-${index}${extension}`);
+    const result = await generateAiVideoClip({ prompt, duration: item.scene?.seconds || 5, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS });
+    const localPath = path.join(workdir, `${item.role}-${index}.mp4`);
     await writeFile(localPath, result.data);
-    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, sha256: result.sha256 } };
+    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256 } };
   }));
   await onProgress(24, `AI 已生成 ${generated.length} 个补充镜头，开始混剪`);
   return { inputs: [...downloadedInputs, ...generated.map((item) => item.input)], generation: generated.map((item) => item.meta) };
