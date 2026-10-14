@@ -296,7 +296,9 @@ export function aiVideoIdempotencyKey(job = {}, role = 'clip') {
     String(job.project_name || '').replace(/ · Retry [0-9]+$/, ''),
     sha256(Buffer.from(String(job.brief || ''))),
   ].join(':');
-  const identity = job.revision_scope === 'retry_failed' ? retryIdentity : (job.id || 'job');
+  const identity = job.revision_scope === 'retry_failed'
+    ? (job.correlation_id || job.parent_job_id || retryIdentity)
+    : (job.id || 'job');
   return `v3-${crypto.createHash('sha256').update(`${identity}:${role}`).digest('hex').slice(0, 48)}`;
 }
 
