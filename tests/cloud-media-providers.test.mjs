@@ -225,3 +225,9 @@ test('capability endpoint separates installed adapters from configured providers
   assert.match(worker, /req\.headers\['x-vercel-oidc-token'\]/);
   assert.match(worker, /providers: mediaProviderCapabilities\(mediaEnv\)/);
 });
+
+test('edge dispatcher permits a staged cloud worker instead of hardcoding production', async () => {
+  const edge = await readFile(new URL('../supabase/functions/video-agent-v0/index.ts', import.meta.url), 'utf8');
+  assert.match(edge, /Deno\.env\.get\("CLOUD_WORKER_URL"\)/);
+  assert.match(edge, /https:\/\/www\.xiandaoai\.com\/api\/video-worker/);
+});
