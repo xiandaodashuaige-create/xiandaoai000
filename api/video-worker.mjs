@@ -215,7 +215,11 @@ async function runOne(accessCode, mediaEnv = process.env) {
         loudness_lufs: rendered.quality?.loudnessLUFS,
         true_peak_dbtp: rendered.quality?.truePeakDBTP,
         voice_source: rendered.voiceSource,
+        voice_provider: rendered.voiceProvider || undefined,
+        voice_ai_generated: rendered.voiceSource === 'tts' || undefined,
         voice_error: rendered.voiceError || undefined,
+        pacing: rendered.pacing,
+        transition_seconds: rendered.transitionSeconds,
         media_generation: rendered.mediaGeneration,
       };
     }
@@ -246,7 +250,16 @@ async function runOne(accessCode, mediaEnv = process.env) {
 export default async function handler(req, res) {
   const oidcToken = String(req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN || '');
   const mediaEnv = oidcToken ? { ...process.env, VERCEL_OIDC_TOKEN: oidcToken } : process.env;
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'cloud_canary_with_local_fallback' });
+  if (req.method === 'GET') return res.status(200).json({
+    ok: true, worker: WORKER,
+    capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix', 'reference_pacing', 'soft_transitions'],
+    provider_adapters: ['openai_image', 'vercel_ai_gateway', 'seedance', 'runway', 'edge_tts', 'openai_tts'],
+    providers: {
+      ...mediaProviderCapabilities(mediaEnv),
+      tts: { edge: true, openai: mediaEnv.OPENAI_TTS_ENABLED === 'true' && Boolean(mediaEnv.OPENAI_API_KEY) },
+    },
+    mode: 'cloud_canary_with_local_fallback',
+  });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });

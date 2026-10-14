@@ -11,6 +11,7 @@ export const VOICES = {
 };
 const MIN_AUDIO_BYTES = 1024;
 const DEFAULT_TIMEOUT_MS = 60_000;
+const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech';
 
 // Same voice and rate rules as the local worker, including the male/female
 // Cantonese switch requested through the revision prompt.
@@ -38,27 +39,74 @@ async function defaultSynthesize({ text, voice, rate }) {
   return Buffer.concat(chunks);
 }
 
+function numericRate(rate) {
+  const percent = Number(String(rate || '').replace('%', '')) || 0;
+  return Math.max(0.25, Math.min(4, 1 + percent / 100));
+}
+
+export async function synthesizeOpenAi({ text, rate, language, env = process.env, fetcher = fetch }) {
+  if (env.OPENAI_TTS_ENABLED !== 'true') throw new Error('openai_tts_disabled');
+  if (!env.OPENAI_API_KEY) throw new Error('openai_tts_missing_key');
+  const response = await fetcher(OPENAI_SPEECH_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+      voice: env.OPENAI_TTS_VOICE || 'marin',
+      input: text,
+      instructions: language === 'zh-HK'
+        ? 'Speak natural Hong Kong Cantonese in a warm, trustworthy beauty-service advertisement tone. Do not use a Mandarin accent.'
+        : 'Speak naturally in a warm, trustworthy local-service advertisement tone.',
+      response_format: 'mp3',
+      speed: numericRate(rate),
+    }),
+  });
+  if (!response.ok) throw new Error(`openai_tts_${response.status}_${(await response.text()).slice(0, 160)}`);
+  return { audio: Buffer.from(await response.arrayBuffer()), provider: 'openai' };
+}
+
+// Edge stays the zero-configuration default. A paid OpenAI fallback is used
+// only after an explicit feature flag, so a transient Edge outage cannot
+// silently create API spend.
+export async function synthesizeCloudVoice(args) {
+  const provider = String(args.env?.TTS_PROVIDER || 'auto').toLowerCase();
+  if (provider === 'openai') return synthesizeOpenAi(args);
+  try {
+    return { audio: await (args.edgeSynthesize || defaultSynthesize)(args), provider: 'edge' };
+  } catch (edgeError) {
+    if (provider === 'edge' || args.env?.OPENAI_TTS_ENABLED !== 'true') throw edgeError;
+    return synthesizeOpenAi(args);
+  }
+}
+
 // Never throws. A failed or empty synthesis returns { ok: false, reason }
 // so the caller can render without voice and say so, instead of claiming one.
 export async function synthesizeVoiceover({
   text, voice, rate, outputPath,
-  synthesize = defaultSynthesize,
+  language,
+  synthesize,
+  env = process.env,
+  fetcher = fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }) {
   if (!text || !text.trim()) return { ok: false, reason: 'empty_narration' };
   let timer;
   try {
-    const audio = await Promise.race([
-      synthesize({ text, voice, rate }),
+    const synthesized = await Promise.race([
+      synthesize
+        ? synthesize({ text, voice, rate, language })
+        : synthesizeCloudVoice({ text, voice, rate, language, env, fetcher }),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('tts_timeout')), timeoutMs);
       }),
     ]);
+    const audio = Buffer.isBuffer(synthesized) ? synthesized : synthesized?.audio;
+    const provider = Buffer.isBuffer(synthesized) ? 'custom' : synthesized?.provider;
     if (!audio || audio.length < MIN_AUDIO_BYTES) {
       return { ok: false, reason: 'tts_empty_audio' };
     }
     await writeFile(outputPath, audio);
-    return { ok: true, path: outputPath, bytes: audio.length };
+    return { ok: true, path: outputPath, bytes: audio.length, provider: provider || 'unknown' };
   } catch (error) {
     return { ok: false, reason: String(error?.message || error).slice(0, 120) };
   } finally {
@@ -68,14 +116,14 @@ export async function synthesizeVoiceover({
 
 // Uploaded voiceover always wins. Only when none was uploaded do we
 // synthesize, and the result says which source was used.
-export async function resolveVoiceover({ uploadedVoice, job, scenes, outputPath, synthesize, timeoutMs }) {
+export async function resolveVoiceover({ uploadedVoice, job, scenes, outputPath, synthesize, timeoutMs, env, fetcher }) {
   if (uploadedVoice) return { voice: uploadedVoice, voiceSource: 'uploaded', voiceError: null };
-  const { voice, rate } = voiceFor(job);
+  const { voice, rate, language } = voiceFor(job);
   const result = await synthesizeVoiceover({
-    text: narrationFor(scenes), voice, rate, outputPath, synthesize, timeoutMs,
+    text: narrationFor(scenes), voice, rate, language, outputPath, synthesize, timeoutMs, env, fetcher,
   });
   return result.ok
-    ? { voice: result.path, voiceSource: 'tts', voiceError: null }
+    ? { voice: result.path, voiceSource: 'tts', voiceProvider: result.provider, voiceError: null }
     : { voice: null, voiceSource: 'none', voiceError: result.reason };
 }
 

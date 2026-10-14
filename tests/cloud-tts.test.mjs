@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  narrationFor, voiceFor, synthesizeVoiceover, resolveVoiceover,
+  narrationFor, voiceFor, synthesizeVoiceover, resolveVoiceover, synthesizeCloudVoice, synthesizeOpenAi,
 } from '../api/_cloud-tts.mjs';
 
 const dir = () => mkdtempSync(path.join(tmpdir(), 'tts-test-'));
@@ -91,4 +91,40 @@ test('if synthesis fails, the render continues without voice and says so', async
     synthesize: async () => { throw new Error('edge_unreachable'); },
   });
   assert.deepEqual(out, { voice: null, voiceSource: 'none', voiceError: 'edge_unreachable' });
+});
+
+test('OpenAI TTS is paid and remains behind an explicit feature flag', async () => {
+  await assert.rejects(
+    synthesizeOpenAi({ text: '你好', env: { OPENAI_API_KEY: 'secret' }, fetcher: async () => { throw new Error('must_not_call'); } }),
+    /openai_tts_disabled/,
+  );
+});
+
+test('OpenAI TTS sends a Cantonese instruction and returns MP3 bytes', async () => {
+  let request;
+  const result = await synthesizeOpenAi({
+    text: '想放鬆一下？', rate: '+4%', language: 'zh-HK',
+    env: { OPENAI_TTS_ENABLED: 'true', OPENAI_API_KEY: 'secret' },
+    fetcher: async (url, init) => {
+      request = { url, init, body: JSON.parse(init.body) };
+      return { ok: true, arrayBuffer: async () => bigAudio, text: async () => '' };
+    },
+  });
+  assert.equal(request.url, 'https://api.openai.com/v1/audio/speech');
+  assert.equal(request.body.model, 'gpt-4o-mini-tts');
+  assert.equal(request.body.voice, 'marin');
+  assert.match(request.body.instructions, /Hong Kong Cantonese/);
+  assert.equal(request.body.speed, 1.04);
+  assert.equal(result.provider, 'openai');
+  assert.equal(result.audio.length, bigAudio.length);
+});
+
+test('automatic TTS falls back once Edge fails when paid fallback is enabled', async () => {
+  const result = await synthesizeCloudVoice({
+    text: '你好', language: 'zh-HK',
+    env: { OPENAI_TTS_ENABLED: 'true', OPENAI_API_KEY: 'secret' },
+    edgeSynthesize: async () => { throw new Error('edge_down'); },
+    fetcher: async () => ({ ok: true, arrayBuffer: async () => bigAudio, text: async () => '' }),
+  });
+  assert.equal(result.provider, 'openai');
 });

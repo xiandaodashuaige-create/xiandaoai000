@@ -17,6 +17,7 @@ const px = (value) => Math.round(value * K);
 const LOUDNESS = { I: -16, TP: -1.5, LRA: 11 };
 const FPS = 30; // local worker renders 30fps
 const SEGMENT_SECONDS = 5;
+const TRANSITION_SECONDS = 0.5;
 const MIN_VIDEO_KBPS = 800;
 const FONT_PATH = '/tmp/NotoSansSC.ttf';
 const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
@@ -57,6 +58,52 @@ export function sceneStarts(duration, scenes, source = {}) {
     const latest = Math.max(trimStart, trimEnd - (scene.seconds ?? SEGMENT_SECONDS) - 0.2);
     return duration > 0 ? Math.min(latest, trimStart + window * x) : trimStart;
   });
+}
+
+export function pacingFromReferenceCuts(cutTimes, referenceDuration, baseDurations) {
+  const bases = baseDurations.map((value) => Math.max(1.5, Number(value) || SEGMENT_SECONDS));
+  const duration = Math.max(0, Number(referenceDuration) || 0);
+  const cuts = [...new Set(cutTimes.map(Number).filter((value) => value > 0.35 && value < duration - 0.35))].sort((a, b) => a - b);
+  if (cuts.length < 2 || !duration) return bases;
+  const points = [0, ...cuts, duration];
+  const raw = [];
+  let accumulated = 0;
+  for (let index = 1; index < points.length && raw.length < bases.length; index += 1) {
+    accumulated += points[index] - points[index - 1];
+    const threshold = Math.max(1.8, bases[raw.length] * 0.55);
+    if (accumulated >= threshold || index === points.length - 1) {
+      raw.push(accumulated);
+      accumulated = 0;
+    }
+  }
+  while (raw.length < bases.length) raw.push(bases[raw.length]);
+  const blended = bases.map((base, index) => {
+    const bounded = Math.max(base * 0.65, Math.min(base * 1.35, raw[index]));
+    return base * 0.55 + bounded * 0.45;
+  });
+  const target = bases.reduce((sum, value) => sum + value, 0);
+  const scale = target / blended.reduce((sum, value) => sum + value, 0);
+  const result = blended.map((value) => Math.round(value * scale * 10) / 10);
+  result[result.length - 1] = Math.round((result.at(-1) + target - result.reduce((sum, value) => sum + value, 0)) * 10) / 10;
+  return result;
+}
+
+export async function referencePacing(reference, baseDurations) {
+  const fallback = { source: 'storyboard', cutCount: 0, durations: [...baseDurations] };
+  if (!reference?.localPath || !String(reference.type || '').startsWith('video/')) return fallback;
+  const duration = Math.min(30, await sourceDuration(reference.localPath));
+  if (!(duration > 0)) return fallback;
+  try {
+    const output = await run([
+      '-hide_banner', '-i', reference.localPath, '-t', String(duration),
+      '-vf', "scale=180:-2,select='gt(scene,0.35)',showinfo", '-an', '-f', 'null', '-',
+    ], path.dirname(reference.localPath));
+    const cuts = [...output.matchAll(/pts_time:([0-9.]+)/g)].map((match) => Number(match[1]));
+    if (cuts.length < 2) return fallback;
+    return { source: 'reference', cutCount: cuts.length, durations: pacingFromReferenceCuts(cuts, duration, baseDurations) };
+  } catch {
+    return fallback;
+  }
 }
 
 async function sourceHasAudio(file) {
@@ -244,14 +291,47 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
     : fitMode === 'contain_blur'
       ? `[0:v]${cropFilter}split=2[fg0][bg0];[bg0]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=28,fps=${FPS},setsar=1[bg];[fg0]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,fps=${FPS},setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[base]`
       : `[0:v]${cropFilter}scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},fps=${FPS},setsar=1[base]`;
-  const videoFilter = `${baseFilter};[base][${overlayIndex}:v]overlay=0:0:format=auto[v]`;
+  const videoFilter = `${baseFilter};[${overlayIndex}:v]format=rgba,fade=t=in:st=0:d=0.22:alpha=1[ol];[base][ol]overlay=0:0:format=auto[v]`;
   const audioMap = hasAudio ? '0:a:0' : '1:a:0';
   await run([
-    '-y', ...input, ...audioInput, '-i', overlay,
+    '-y', ...input, ...audioInput, '-loop', '1', '-framerate', String(FPS), '-i', overlay,
     '-filter_complex', videoFilter, '-map', '[v]', '-map', audioMap,
     '-t', String(seconds), '-shortest', '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-maxrate', '16M', '-bufsize', '32M',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2', output,
   ], path.dirname(output));
+}
+
+export async function assembleWithTransitions({ segments, durations, output, workdir, transitionSeconds = TRANSITION_SECONDS }) {
+  if (segments.length !== durations.length || !segments.length) throw new Error('invalid_transition_timeline');
+  if (segments.length === 1) {
+    await run(['-y', '-i', segments[0], '-t', String(durations[0]), '-c', 'copy', '-movflags', '+faststart', output], workdir);
+    return output;
+  }
+  const args = ['-y'];
+  for (const segment of segments) args.push('-i', segment);
+  const filters = segments.map((_, index) => `[${index}:v]settb=AVTB,setpts=PTS-STARTPTS[v${index}]`);
+  let video = '[v0]';
+  let elapsed = durations[0];
+  for (let index = 1; index < segments.length; index += 1) {
+    const next = `[vx${index}]`;
+    filters.push(`${video}[v${index}]xfade=transition=fade:duration=${transitionSeconds}:offset=${elapsed.toFixed(3)}${next}`);
+    video = next;
+    elapsed += durations[index];
+  }
+  const audioInputs = durations.map((duration, index) => {
+    const fade = Math.min(0.15, duration / 8);
+    const outStart = Math.max(0, duration - fade);
+    filters.push(`[${index}:a]atrim=duration=${duration},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${fade},afade=t=out:st=${outStart}:d=${fade}[a${index}]`);
+    return `[a${index}]`;
+  });
+  filters.push(`${audioInputs.join('')}concat=n=${segments.length}:v=0:a=1[aout]`);
+  const total = durations.reduce((sum, value) => sum + value, 0);
+  await run([
+    ...args, '-filter_complex', filters.join(';'), '-map', video, '-map', '[aout]', '-t', String(total),
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-maxrate', '16M', '-bufsize', '32M',
+    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', output,
+  ], workdir);
+  return output;
 }
 
 async function mixAudio(video, voice, bgm, output) {
@@ -305,17 +385,19 @@ export async function inspectRender(file, expectedDuration) {
 // padded or trimmed to the scene length, then the clips are joined into one
 // track. Scene lengths grow to fit the voice. Any failure means no voice at
 // all, so a half-narrated video is never shipped.
-export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeoutMs }) {
-  const { voice, rate } = voiceFor(job);
+export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeoutMs, env = process.env, fetcher = fetch }) {
+  const { voice, rate, language } = voiceFor(job);
   const parts = [];
+  const providers = new Set();
   for (let index = 0; index < scenes.length; index += 1) {
     const scene = scenes[index];
     const base = scene.seconds ?? SEGMENT_SECONDS;
     const raw = path.join(workdir, `vo-${index}.mp3`);
     let voiceSeconds = 0;
     if (scene.vo && scene.vo.trim()) {
-      const result = await synthesizeVoiceover({ text: scene.vo, voice, rate, outputPath: raw, synthesize, timeoutMs });
+      const result = await synthesizeVoiceover({ text: scene.vo, voice, rate, language, outputPath: raw, synthesize, timeoutMs, env, fetcher });
       if (!result.ok) return { ok: false, reason: `scene_${index + 1}_${result.reason}` };
+      providers.add(result.provider);
       voiceSeconds = await sourceDuration(raw);
     }
     scene.seconds = fitSecondsToVoice(base, voiceSeconds);
@@ -331,7 +413,7 @@ export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeo
   await writeFile(list, parts.map((file) => `file '${file.replaceAll("'", "'\\''")}'`).join('\n'));
   const track = path.join(workdir, 'voiceover-track.wav');
   await run(['-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'pcm_s16le', track], workdir);
-  return { ok: true, path: track };
+  return { ok: true, path: track, provider: [...providers].join('+') || 'none' };
 }
 
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}, options = {}) {
@@ -339,6 +421,9 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const scenes = copyFor(job);
+  const reference = downloadedInputs.find((item) => item.role === 'reference');
+  const pacing = await referencePacing(reference, scenes.map((scene) => scene.seconds ?? SEGMENT_SECONDS));
+  scenes.forEach((scene, index) => { scene.seconds = pacing.durations[index] ?? scene.seconds; });
   const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress, env: options.mediaEnv || process.env });
   const activeInputs = prepared.inputs;
   const visual = selectSceneSources(activeInputs);
@@ -347,12 +432,14 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   const bgm = activeInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
   let voice = uploadedVoice || null;
   let voiceSource = uploadedVoice ? 'uploaded' : 'none';
+  let voiceProvider = uploadedVoice ? 'uploaded' : null;
   let voiceError = null;
   if (!uploadedVoice) {
-    const timed = await renderVoiceTrack({ job, scenes, workdir, synthesize: options.synthesize });
+    const timed = await renderVoiceTrack({ job, scenes, workdir, synthesize: options.synthesize, env: options.mediaEnv || process.env, fetcher: options.fetcher });
     if (timed.ok) {
       voice = timed.path;
       voiceSource = 'tts';
+      voiceProvider = timed.provider;
     } else {
       voiceError = timed.reason;
     }
@@ -369,28 +456,29 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
     const wanted = scenes[index].seconds ?? SEGMENT_SECONDS;
+    const renderSeconds = wanted + (index < scenes.length - 1 ? TRANSITION_SECONDS : 0);
     // Short clips loop (as the local worker does) so the scene keeps its length.
-    const loop = !String(source.type || '').startsWith('image/') && durationBySource.get(source.localPath) < start + wanted;
+    const loop = !String(source.type || '').startsWith('image/') && durationBySource.get(source.localPath) < start + renderSeconds;
     await normalizeSegment({
       source: source.localPath, type: source.type, overlay, output: segment,
-      seconds: wanted, start, loop, cropOverride: source.crop,
+      seconds: renderSeconds, start, loop, cropOverride: source.crop,
       fitMode: source.fit_mode ?? source.fitMode ?? 'fill',
     });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }
-  const concat = path.join(workdir, 'concat.txt');
-  await writeFile(concat, segments.map((file) => `file '${file.replaceAll("'", "'\\''")}'`).join('\n'));
   const assembled = path.join(workdir, 'assembled.mp4');
-  await run(['-y', '-f', 'concat', '-safe', '0', '-i', concat, '-c', 'copy', '-movflags', '+faststart', assembled], workdir);
+  const durations = scenes.map((scene) => scene.seconds ?? SEGMENT_SECONDS);
+  await assembleWithTransitions({ segments, durations, output: assembled, workdir });
   const finalPath = path.join(workdir, 'final-cloud.mp4');
   const mixed = await mixAudio(assembled, voice, bgm, path.join(workdir, 'mixed.mp4'));
   const result = await normalizeLoudness(mixed, finalPath);
-  const expectedDuration = scenes.reduce((sum, scene) => sum + (scene.seconds ?? SEGMENT_SECONDS), 0);
+  const expectedDuration = durations.reduce((sum, value) => sum + value, 0);
   const quality = await inspectRender(result, expectedDuration);
   await onProgress(90, '云端成片已生成，正在质检与回传');
   return {
     data: await readFile(result), durationSeconds: expectedDuration, width: WIDTH, height: HEIGHT,
-    voiceSource, voiceError, quality, mediaGeneration: prepared.generation,
+    voiceSource, voiceProvider, voiceError, quality, mediaGeneration: prepared.generation,
+    pacing: { ...pacing, finalDurations: durations }, transitionSeconds: TRANSITION_SECONDS,
   };
 }
