@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import {
   experimental_getVideoStatus as getVideoStatus,
   experimental_startVideo as startVideo,
@@ -17,16 +16,6 @@ const PROMPT = [
   'No subtitles, no logos, no on-screen text, no watermark, no beauty-filter plastic skin, no warped fingers.',
 ].join(' ');
 
-function secureEqual(left, right) {
-  const a = crypto.createHash('sha256').update(String(left || '')).digest();
-  const b = crypto.createHash('sha256').update(String(right || '')).digest();
-  return crypto.timingSafeEqual(a, b);
-}
-
-function authorize(req) {
-  return secureEqual(req.headers['x-video-access'], process.env.VIDEO_AGENT_ACCESS);
-}
-
 function compactVideo(video) {
   return {
     url: video?.url || video?.providerMetadata?.url || video?.providerMetadata?.downloadUrl || null,
@@ -36,8 +25,17 @@ function compactVideo(video) {
   };
 }
 
+function queryValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default async function handler(req, res) {
-  if (req.method === 'GET') {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'method_not_allowed' });
+  }
+
+  const action = queryValue(req.query?.action);
+  if (!action) {
     return res.status(200).json({
       ok: true,
       service: 'v3-ai-video-gateway-canary',
@@ -49,18 +47,12 @@ export default async function handler(req, res) {
     });
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
-  if (!authorize(req)) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  if (req.body?.confirmation !== CONFIRMATION) {
+  if (queryValue(req.query?.confirmation) !== CONFIRMATION) {
     return res.status(400).json({ error: 'confirmation_required' });
   }
 
   try {
-    if (req.body?.action === 'start') {
+    if (action === 'start') {
       const { operation, warnings } = await startVideo({
         model: MODEL,
         prompt: PROMPT,
@@ -68,15 +60,17 @@ export default async function handler(req, res) {
         resolution: '720p',
         duration: 5,
       });
-      return res.status(202).json({ ok: true, model: MODEL, operation, warnings: warnings || [] });
+      const operationToken = Buffer.from(JSON.stringify(operation), 'utf8').toString('base64url');
+      return res.status(202).json({ ok: true, model: MODEL, operationToken, warnings: warnings || [] });
     }
 
-    if (req.body?.action === 'status') {
-      const serialized = JSON.stringify(req.body?.operation || null);
-      if (serialized.length > 20000) {
-        return res.status(400).json({ error: 'operation_too_large' });
+    if (action === 'status') {
+      const operationToken = String(queryValue(req.query?.operation) || '');
+      if (!operationToken || operationToken.length > 20000) {
+        return res.status(400).json({ error: 'invalid_operation' });
       }
-      const result = await getVideoStatus(MODEL, { operation: req.body.operation });
+      const operation = JSON.parse(Buffer.from(operationToken, 'base64url').toString('utf8'));
+      const result = await getVideoStatus(MODEL, { operation });
       return res.status(200).json({
         ...result,
         videos: Array.isArray(result.videos) ? result.videos.map(compactVideo) : [],
