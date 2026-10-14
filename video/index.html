@@ -780,12 +780,13 @@ async function showJob(id){
   else h+='<div class="meta">制作完成后，成片会出现在这里。</div>';
   root.innerHTML=h;
   root.querySelectorAll('.result-download').forEach(btn=>btn.onclick=async()=>{
+    const preview=window.open('about:blank','_blank');
     btn.disabled=true;
     const {data,error}=await sb.storage.from(btn.dataset.bucket).download(btn.dataset.path);
     btn.disabled=false;
-    if(error){alert('成片读取失败：'+error.message);return}
+    if(error){preview?.close();alert('成片读取失败：'+error.message);return}
     const u=URL.createObjectURL(data);
-    window.open(u,'_blank');
+    if(preview)preview.location.href=u;else window.open(u,'_blank');
     recordEvent('download','',{path:btn.dataset.path,workflow_mode:job.workflow_mode},job.id);
     setTimeout(()=>URL.revokeObjectURL(u),60000);
   });
