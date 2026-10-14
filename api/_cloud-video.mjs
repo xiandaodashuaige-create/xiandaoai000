@@ -131,24 +131,24 @@ export async function overlayPng(scene, output) {
     const label = await text(scene.button, px(560), px(34), '#00130b', 800);
     if (label) {
       const h = px(84);
-      shapes.push(`<rect x="${px(48)}" y="${px(1190)}" width="${px(624)}" height="${h}" rx="${px(42)}" fill="#21d17d"/>`);
-      composites.push({ input: label.image, top: px(1190) + Math.round((h - label.height) / 2), left: px(48) + px(36) });
+      shapes.push(`<rect x="${px(48)}" y="${px(1065)}" width="${px(624)}" height="${h}" rx="${px(42)}" fill="#21d17d"/>`);
+      composites.push({ input: label.image, top: px(1065) + Math.round((h - label.height) / 2), left: px(48) + px(36) });
     }
   }
 
   const svg = Buffer.from(`<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00130b" stop-opacity=".2"/><stop offset=".55" stop-color="#00130b" stop-opacity="0"/><stop offset="1" stop-color="#00130b" stop-opacity=".88"/></linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#shade)"/>
-    <rect x="${px(48)}" y="${px(72)}" width="${px(220)}" height="${px(54)}" rx="${px(27)}" fill="#21d17d"/>
+    <rect x="${px(48)}" y="${px(138)}" width="${px(220)}" height="${px(54)}" rx="${px(27)}" fill="#21d17d"/>
     ${shapes.join('\n')}
   </svg>`);
   const kicker = await text(scene.kicker, px(180), px(25), '#002414', 700);
   const title = await text(scene.title, px(624), px(58), '#ffffff', 800);
   const subtitle = scene.showSubtitle === false ? null : await text(scene.subtitle, px(624), px(28), '#e1f7ec', 500);
   const layers = [...composites];
-  if (kicker) layers.push({ input: kicker.image, top: px(84), left: px(68) });
-  if (title) layers.push({ input: title.image, top: Math.max(px(800), px(1055) - title.height), left: px(48) });
-  if (subtitle) layers.push({ input: subtitle.image, top: px(1100), left: px(48) });
+  if (kicker) layers.push({ input: kicker.image, top: px(150), left: px(68) });
+  if (title) layers.push({ input: title.image, top: Math.max(px(800), px(885) - title.height), left: px(48) });
+  if (subtitle) layers.push({ input: subtitle.image, top: px(965), left: px(48) });
   await sharp(svg).composite(layers).png().toFile(output);
 }
 
