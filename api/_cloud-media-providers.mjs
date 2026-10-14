@@ -277,9 +277,9 @@ function visualPrompt(job, scene, position) {
   const brief = String(job.brief || '').replaceAll('\\n', '\n');
   const positiveContext = brief.split('\n').filter((line) => !/(禁止|不得|不要|排除|must[_ -]?exclude|negative)/i.test(line)).join(' ').slice(0, 1800);
   const action = position === 'opening hook'
-    ? 'Open on immediate confident movement: the adult business spokesperson from the reference image enters a contemporary workplace and engages a business owner; use a subtle forward camera move and establish the problem within the first second.'
-    : 'End on a credible result moment: the same adult spokesperson and business owner review strong customer-enquiry results together; the camera settles into a clean confident composition with generous lower safe space for a later call-to-action overlay.';
-  return `Create a premium photorealistic vertical 9:16 social-media commercial ${position} shot. Preserve the exact adult spokesperson identity, face, hair, age, and wardrobe cues from the supplied reference image. ${action} Scene copy intent: ${scene?.title || ''}. ${scene?.subtitle || ''}. Campaign context: ${positiveContext}. Natural human motion and anatomy, polished commercial lighting, realistic Hong Kong business environment when relevant, strong visual focus, no baked-in typography. Do not render words, letters, subtitles, logos, prices, watermarks, interface text, or QR codes.`;
+    ? 'Open on the spokesperson alone, already facing the camera. Use a locked, eye-level medium shot with the entire head, shoulders, and upper torso visible, at least ten percent clear margin above the hair, and no tilt, orbit, push-in, extreme close-up, selfie angle, or camera shake. The spokesperson gives one small confident hand gesture while staying centred.'
+    : 'End on the same spokesperson alone, facing the camera in a locked eye-level medium shot. Keep the entire head, shoulders, and upper torso visible in the upper half of frame, with the lower forty percent visually quiet and empty for a later call-to-action overlay. No other person may enter or overlap the frame.';
+  return `Create a premium photorealistic vertical 9:16 social-media commercial ${position} shot. Preserve the exact adult spokesperson identity, face, hair, age, and wardrobe cues from the supplied reference image. ${action} Scene copy intent: ${scene?.title || ''}. ${scene?.subtitle || ''}. Campaign context: ${positiveContext}. Natural human motion and anatomy, polished commercial lighting, realistic Hong Kong business environment when relevant, strong visual focus, no baked-in typography. Do not render words, letters, subtitles, logos, prices, watermarks, interface text, QR codes, or additional people.`;
 }
 
 function negativeVisualPrompt(job) {
@@ -287,7 +287,7 @@ function negativeVisualPrompt(job) {
     .filter((line) => /(禁止|不得|不要|排除|must[_ -]?exclude|negative)/i.test(line))
     .join('; ')
     .slice(0, 1200);
-  return `identity drift, different person, face morphing, distorted anatomy, extra fingers, deformed hands, duplicate people, text, letters, captions, subtitles, logos, watermarks, QR codes, UI text${exclusions ? `; ${exclusions}` : ''}`;
+  return `identity drift, different person, face morphing, cropped head, cropped face, forehead-only framing, extreme close-up, selfie angle, tilted camera, camera shake, distorted anatomy, extra fingers, deformed hands, duplicate people, additional people, photobombers, text, letters, captions, subtitles, logos, watermarks, QR codes, UI text${exclusions ? `; ${exclusions}` : ''}`;
 }
 
 export function aiVideoIdempotencyKey(job = {}, role = 'clip') {
