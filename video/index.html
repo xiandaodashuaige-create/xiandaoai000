@@ -769,7 +769,7 @@ async function showJob(id){
   let h='<div class="meta">V'+(job.version_number||1)+' · '+escapeHtml(job.stage||'')+' · '+(job.progress||0)+'%</div>';
   if(job.revision_prompt)h+='<div class="meta" style="margin-top:6px">本版修改：'+escapeHtml(job.revision_prompt)+'</div>';
   if(job.output_files?.length){
-    h+=job.output_files.map((o,i)=>o.path?'<button class="result result-download" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">'+(job.workflow_mode==='image_poster'?'查看海报 ':'查看成片 ')+(i+1)+'</button>':'').join(' ');
+    h+=job.output_files.map((o,i)=>o.path?'<button class="result result-download" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">'+(job.workflow_mode==='image_poster'?'查看海报 ':'查看成片 ')+(i+1)+'</button> <button class="result result-save" data-bucket="video-agent-results" data-path="'+escapeHtml(o.path)+'">'+(job.workflow_mode==='image_poster'?'下载海报 ':'下载成片 ')+(i+1)+'</button>':'').join(' ');
     h+='<div class="revactions">'+
       (job.accepted_at?'<span class="accepted">✓ 这一版已确认</span>':'<button class="revbtn primarymini accept-job">👍 满意，完成</button>')+
       '<button class="revbtn revise-job">继续优化</button></div>';
@@ -787,6 +787,21 @@ async function showJob(id){
     if(error){preview?.close();alert('成片读取失败：'+error.message);return}
     const u=URL.createObjectURL(data);
     if(preview)preview.location.href=u;else window.open(u,'_blank');
+    recordEvent('download','',{path:btn.dataset.path,workflow_mode:job.workflow_mode},job.id);
+    setTimeout(()=>URL.revokeObjectURL(u),60000);
+  });
+  root.querySelectorAll('.result-save').forEach(btn=>btn.onclick=async()=>{
+    btn.disabled=true;
+    const {data,error}=await sb.storage.from(btn.dataset.bucket).download(btn.dataset.path);
+    btn.disabled=false;
+    if(error){alert('成片下载失败：'+error.message);return}
+    const u=URL.createObjectURL(data);
+    const link=document.createElement('a');
+    link.href=u;
+    link.download=btn.dataset.path.split('/').pop()||(job.workflow_mode==='image_poster'?'result.png':'result.mp4');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     recordEvent('download','',{path:btn.dataset.path,workflow_mode:job.workflow_mode},job.id);
     setTimeout(()=>URL.revokeObjectURL(u),60000);
   });
