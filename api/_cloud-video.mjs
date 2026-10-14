@@ -170,11 +170,11 @@ export async function overlayPng(scene, output) {
     const label = await text(scene.button || 'WhatsApp 預約', px(380), px(36), '#ffffff', 800, 'centre');
     // Stack offer, pill and button from the measured text height so a wrapped
     // offer line never runs underneath the pill (was clipping "S$98").
-    const offerTop = px(470);
+    const offerTop = px(750);
     const pillH = px(72);
     const buttonH = px(92);
-    const pillTop = Math.max(px(600), offerTop + (offer ? offer.height : 0) + px(14));
-    const cardTop = px(430);
+    const pillTop = Math.max(px(880), offerTop + (offer ? offer.height : 0) + px(14));
+    const cardTop = px(720);
     const cardBottom = pillTop + pillH + px(24);
     const buttonTop = cardBottom + px(40);
     shapes.push(`<rect x="${px(70)}" y="${cardTop}" width="${px(580)}" height="${cardBottom - cardTop}" rx="${px(36)}" fill="url(#gold)"/>`);
@@ -196,7 +196,7 @@ export async function overlayPng(scene, output) {
     composites.push({ input: title.image, top: titleTop, left: px(48) });
   }
   // Subtitle sits in a translucent caption bar, as in the local worker.
-  const subtitle = scene.showSubtitle === false ? null : await text(scene.subtitle, px(600), px(28), '#ffffff', 500, 'centre');
+  const subtitle = scene.showSubtitle === false || template === 'cta_offer' ? null : await text(scene.subtitle, px(600), px(28), '#ffffff', 500, 'centre');
   if (subtitle) {
     const top = px(1100);
     shapes.push(`<rect x="${px(40)}" y="${top - pad}" width="${px(640)}" height="${subtitle.height + pad * 2}" rx="${px(14)}" fill="#000000" fill-opacity=".55"/>`);

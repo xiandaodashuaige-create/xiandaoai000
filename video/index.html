@@ -501,7 +501,11 @@ async function selectProject(project){
   $('aiAudience').value=project.target_audience||'';
   $('aiFacts').value=project.offer_facts||'';
   $('aiAction').value=project.cta||'';
-  const voice=[...$('aiVoice').options].find(o=>o.value.startsWith(project.default_language||''));
+  const projectLanguage=String(project?.default_language||'');
+  const voice=[...$('aiVoice').options].find(o=>{
+    const optionLanguage=o.value.split(/[，,]/)[0];
+    return projectLanguage.startsWith(optionLanguage)||optionLanguage.startsWith(projectLanguage);
+  });
   if(voice)$('aiVoice').value=voice.value;
   $('remixLanguage').value='跟随项目默认语言';
   $('posterLanguage').value='跟随项目默认语言';

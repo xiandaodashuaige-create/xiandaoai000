@@ -25,6 +25,16 @@ test('every storyboard template renders a 1080x1920 overlay', async () => {
   }
 });
 
+test('CTA card stays in the lower safe area and does not cover the presenter face', async () => {
+  const scene = industryStoryboard({ brief: '業務主題：香港美容院廣告合作' }).at(-1);
+  const output = path.join(dir(), 'cta-safe-area.png');
+  await overlayPng(scene, output);
+  const { data, info } = await sharp(output).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const alphaAt = (x, y) => data[(y * info.width + x) * info.channels + 3];
+  assert.ok(alphaAt(540, 760) < 200, `face area alpha ${alphaAt(540, 760)}`);
+  assert.equal(alphaAt(540, 1300), 255);
+});
+
 test('final audio is normalised to the -16 LUFS local target', async () => {
   const input = path.join(dir(), 'quiet.mp4');
   execFileSync(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=360x640:rate=25:duration=6',
