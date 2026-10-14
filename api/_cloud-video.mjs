@@ -47,11 +47,15 @@ async function sourceDuration(file) {
 }
 
 // Same start points as the local worker: 3%, 22%, 42%, 61%, 78% of the clip.
-export function sceneStarts(duration, scenes) {
+export function sceneStarts(duration, scenes, source = {}) {
+  const trimStart = Math.max(0, Number(source.trim_start ?? source.trimStartSeconds ?? 0) || 0);
+  const requestedEnd = Number(source.trim_end ?? source.trimEndSeconds ?? duration) || duration;
+  const trimEnd = Math.max(trimStart, Math.min(duration || requestedEnd, requestedEnd));
+  const window = Math.max(0, trimEnd - trimStart);
   return scenes.map((scene, index) => {
     const x = [0.03, 0.22, 0.42, 0.61, 0.78][index % 5];
-    const latest = Math.max(0, duration - (scene.seconds ?? SEGMENT_SECONDS) - 0.2);
-    return duration > 0 ? Math.min(latest, duration * x) : 0;
+    const latest = Math.max(trimStart, trimEnd - (scene.seconds ?? SEGMENT_SECONDS) - 0.2);
+    return duration > 0 ? Math.min(latest, trimStart + window * x) : trimStart;
   });
 }
 
@@ -85,13 +89,23 @@ export function copyFor(job) {
 export function selectSceneSources(inputs) {
   const visuals = inputs.filter((item) => /^(video|image)\//.test(String(item.type || '')) && item.role !== 'reference' && item.role !== 'character_reference');
   const byRole = (role) => visuals.filter((item) => item.role === role);
-  const generated = byRole('ai_generated');
-  const hook = [...byRole('ai_hook'), ...generated, ...byRole('asset'), ...byRole('main')];
+  // An uploaded AI hook/CTA may belong to another business, offer or person.
+  // Only use generated-role footage after a semantic approval step. Assets
+  // generated for this job receive that flag in prepareAiHybridAssets().
+  const approved = (item) => item.semantic_approved === true || item.semanticApproved === true;
+  const generated = byRole('ai_generated').filter(approved);
+  const hook = [...byRole('ai_hook').filter(approved), ...generated, ...byRole('asset'), ...byRole('main')];
   const proof = [...byRole('main'), ...byRole('case_proof'), ...byRole('asset')];
-  const cta = [...byRole('ai_cta'), ...generated.slice(1), ...generated, ...byRole('asset'), ...byRole('main')];
+  const cta = [...byRole('ai_cta').filter(approved), ...generated.slice(1), ...generated, ...byRole('asset'), ...byRole('main')];
   if (!visuals.length) return [];
   const pick = (pool, index = 0) => pool[index % Math.max(1, pool.length)] || visuals[index % visuals.length];
   return [pick(hook), pick(proof, 0), pick(proof, 1), pick(proof, 2), pick(cta)].filter(Boolean);
+}
+
+export function renderWorkdirFor(jobId) {
+  // Inputs are downloaded to /tmp/video-<jobId>. Rendering must never clean
+  // that same directory or the worker deletes its own source files.
+  return path.join('/tmp', `video-render-${jobId}`);
 }
 
 async function ensureFont() {
@@ -210,7 +224,11 @@ export async function overlayPng(scene, output) {
   await sharp(svg).composite(composites).png().toFile(output);
 }
 
-export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0, loop = false }) {
+function validCrop(value) {
+  return /^\d{2,4}:\d{2,4}:\d{1,4}:\d{1,4}$/.test(String(value || '')) ? String(value) : null;
+}
+
+export async function normalizeSegment({ source, type, overlay, output, seconds = SEGMENT_SECONDS, start = 0, loop = false, cropOverride = null, fitMode = 'fill' }) {
   const isImage = String(type || '').startsWith('image/');
   const hasAudio = !isImage && await sourceHasAudio(source);
   // Seek before the input so each scene starts at its own point in the footage.
@@ -219,9 +237,13 @@ export async function normalizeSegment({ source, type, overlay, output, seconds 
     : [...(loop ? ['-stream_loop', '-1'] : []), ...(start > 0 ? ['-ss', start.toFixed(2)] : []), '-i', source];
   const audioInput = hasAudio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
   const overlayIndex = hasAudio ? 1 : 2;
+  const crop = isImage ? null : validCrop(cropOverride);
+  const cropFilter = crop ? `crop=${crop},` : '';
   const baseFilter = isImage
     ? `[0:v]scale=${WIDTH * 2}:${HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${WIDTH * 2}:${HEIGHT * 2},zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${Math.ceil(seconds * FPS)}:s=${WIDTH}x${HEIGHT}:fps=${FPS},setsar=1[base]`
-    : `[0:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},fps=${FPS},setsar=1[base]`;
+    : fitMode === 'contain_blur'
+      ? `[0:v]${cropFilter}split=2[fg0][bg0];[bg0]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},gblur=sigma=28,fps=${FPS},setsar=1[bg];[fg0]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,fps=${FPS},setsar=1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[base]`
+      : `[0:v]${cropFilter}scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},fps=${FPS},setsar=1[base]`;
   const videoFilter = `${baseFilter};[base][${overlayIndex}:v]overlay=0:0:format=auto[v]`;
   const audioMap = hasAudio ? '0:a:0' : '1:a:0';
   await run([
@@ -313,7 +335,7 @@ export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeo
 }
 
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}, options = {}) {
-  const workdir = path.join('/tmp', `video-${job.id}`);
+  const workdir = renderWorkdirFor(job.id);
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const scenes = copyFor(job);
@@ -342,14 +364,18 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   }
   for (let index = 0; index < scenes.length; index += 1) {
     const source = visual[index] || visual[index % visual.length];
-    const start = sceneStarts(durationBySource.get(source.localPath) || 0, scenes)[index];
+    const start = sceneStarts(durationBySource.get(source.localPath) || 0, scenes, source)[index];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
     const wanted = scenes[index].seconds ?? SEGMENT_SECONDS;
     // Short clips loop (as the local worker does) so the scene keeps its length.
     const loop = !String(source.type || '').startsWith('image/') && durationBySource.get(source.localPath) < start + wanted;
-    await normalizeSegment({ source: source.localPath, type: source.type, overlay, output: segment, seconds: wanted, start, loop });
+    await normalizeSegment({
+      source: source.localPath, type: source.type, overlay, output: segment,
+      seconds: wanted, start, loop, cropOverride: source.crop,
+      fitMode: source.fit_mode ?? source.fitMode ?? 'fill',
+    });
     segments.push(segment);
     await onProgress(28 + index * 11, `云端正在编排第 ${index + 1}/${scenes.length} 段`);
   }

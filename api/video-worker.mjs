@@ -228,7 +228,11 @@ async function runOne(accessCode, mediaEnv = process.env) {
     });
     await rpc('video_agent_worker_update', {
       p_access: accessCode, p_job_id: job.id, p_status: 'completed', p_progress: 100,
-      p_stage: job.workflow_mode === 'image_poster' ? '云端已完成，可查看海报' : '云端已完成，可查看成片',
+      p_stage: job.workflow_mode === 'image_poster'
+        ? '云端已完成，可查看海报'
+        : artifactMeta.voice_error
+          ? '云端成片已完成，但旁白生成失败，请检查后再投放'
+          : '云端已完成，可查看成片',
       p_output_files: [{ name: fileName, path: dest, type: contentType, sha256, ...artifactMeta }], p_error_message: null,
     });
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };

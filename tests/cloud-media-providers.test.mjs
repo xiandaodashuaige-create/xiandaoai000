@@ -129,6 +129,7 @@ test('AI Hybrid fills missing hook and CTA with GPT images when video is not con
       fetcher: async () => json({ data: [{ b64_json: fixture.toString('base64') }] }),
     });
     assert.deepEqual(result.inputs.map((item) => item.role), ['ai_hook', 'ai_cta']);
+    assert.ok(result.inputs.every((item) => item.semantic_approved === true));
     assert.ok((await readFile(result.inputs[0].localPath)).length > 100);
     assert.deepEqual(result.generation.map((item) => item.provider), ['openai', 'openai']);
   } finally { await rm(workdir, { recursive: true, force: true }); }
