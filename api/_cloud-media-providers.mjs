@@ -58,6 +58,32 @@ function imageProviderConfig(env) {
   return null;
 }
 
+function imageSize(model, env) {
+  if (env.OPENAI_IMAGE_SIZE) return env.OPENAI_IMAGE_SIZE;
+  return String(model || '').startsWith('openai/') || String(model || '').startsWith('gpt-image-') ? '1088x1360' : '1024x1024';
+}
+
+function imageRequestBody(image, prompt, env) {
+  return {
+    model: image.model,
+    prompt: String(prompt || '').slice(0, 12000),
+    size: imageSize(image.model, env),
+    quality: env.OPENAI_IMAGE_QUALITY || 'medium',
+    output_format: 'webp',
+    moderation: 'auto',
+  };
+}
+
+async function requestImage(image, prompt, env, fetcher, timeoutMs) {
+  const response = await fetcher(image.url, {
+    method: 'POST',
+    headers: apiHeaders(image.token),
+    signal: timeoutSignal(timeoutMs),
+    body: JSON.stringify(imageRequestBody(image, prompt, env)),
+  });
+  return jsonResponse(response, 'openai_image');
+}
+
 export function mediaProviderCapabilities(env = process.env) {
   const on = enabled(env);
   const image = on ? imageProviderConfig(env) : null;
@@ -74,22 +100,20 @@ export function mediaProviderCapabilities(env = process.env) {
 
 export async function generateOpenAiImage({ prompt, env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
   if (!enabled(env)) throw new Error('ai_media_generation_disabled');
-  const image = imageProviderConfig(env);
+  let image = imageProviderConfig(env);
   if (!image) throw new Error('openai_image_not_configured');
-  const response = await fetcher(image.url, {
-    method: 'POST',
-    headers: apiHeaders(image.token),
-    signal: timeoutSignal(timeoutMs),
-    body: JSON.stringify({
-      model: image.model,
-      prompt: String(prompt || '').slice(0, 12000),
-      size: env.OPENAI_IMAGE_SIZE || '1088x1360',
-      quality: env.OPENAI_IMAGE_QUALITY || 'medium',
-      output_format: 'webp',
-      moderation: 'auto',
-    }),
-  });
-  const payload = await jsonResponse(response, 'openai_image');
+  let payload;
+  try {
+    payload = await requestImage(image, prompt, env, fetcher, timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const restrictedGatewayModel = image.provider === 'vercel-ai-gateway'
+      && /openai_image_403_/.test(message)
+      && /(Free tier users|RestrictedModelsError|no_providers_available)/i.test(message);
+    if (!restrictedGatewayModel) throw error;
+    image = { ...image, model: env.AI_GATEWAY_IMAGE_FALLBACK_MODEL || 'recraft/recraft-v4.1-flash' };
+    payload = await requestImage(image, prompt, { ...env, OPENAI_IMAGE_SIZE: env.AI_GATEWAY_IMAGE_FALLBACK_SIZE || '1024x1024' }, fetcher, timeoutMs);
+  }
   const encoded = payload?.data?.[0]?.b64_json;
   if (!encoded || typeof encoded !== 'string') throw new Error('openai_image_missing_data');
   const data = Buffer.from(encoded, 'base64');
