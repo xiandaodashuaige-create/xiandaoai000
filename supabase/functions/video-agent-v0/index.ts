@@ -407,6 +407,24 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, job: data });
     }
 
+    if (action === "retry_failed_job") {
+      const { data, error } = await sb.rpc("video_agent_create_revision", {
+        p_access: access,
+        p_parent_job_id: String(body.job_id || ""),
+        p_revision_prompt: "失败任务复用原素材重试",
+        p_revision_scope: "retry_failed",
+      });
+      if (error) return json({ error: errMsg(error) }, 500);
+      if (data?.execution_target === "cloud") {
+        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-video-access": access },
+          body: JSON.stringify({ source: "retry_failed_job", job_id: data.id }),
+        }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
+      }
+      return json({ ok: true, job: data });
+    }
+
     if (action === "accept_job") {
       const { data, error } = await sb.rpc("video_agent_accept_job", { p_access: access, p_job_id: String(body.job_id || "") });
       if (error) return json({ error: errMsg(error) }, 500);
