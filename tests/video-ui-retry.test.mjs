@@ -32,3 +32,8 @@ test('completed results expose a direct browser download action', () => {
   assert.match(block, /link\.click\(\)/);
   assert.match(block, /link\.remove\(\)/);
 });
+
+test('combined project locale still selects its matching AI voice', () => {
+  assert.match(source, /const projectLanguage=String\(project\?\.default_language\|\|''\)/);
+  assert.match(source, /projectLanguage\.startsWith\(optionLanguage\)/);
+});
