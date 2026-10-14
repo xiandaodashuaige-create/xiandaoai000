@@ -303,6 +303,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
         <option value="beige_omnichannel">米白科技 · 多平台＋全渠道流程</option>
         <option value="documentary">真实门店 · 纪实人物＋信任证据</option>
       </select><div class="meta">四类版式来自已确认的历史广告方向；正文仍由系统排版，避免 AI 乱写中文、价格或联系方式。</div></div>
+      <div class="fieldbox"><label for="posterBrand">海报品牌 *</label><input id="posterBrand" placeholder="例如：LULIAN AI"></div>
       <div class="fieldbox wide"><label for="posterTitle">主标题 / Hook *</label><input id="posterTitle" placeholder="例如：别只听别人讲 AI，亲手做一次才是真的会"></div>
       <div class="fieldbox wide"><label for="posterFacts">核心卖点、准确价格与事实 *</label><textarea id="posterFacts" placeholder="例如：马币49｜线下实战｜现场操作｜小班教学。只填已经确认的资料。"></textarea></div>
       <div class="fieldbox"><label for="posterCta">行动引导 *</label><input id="posterCta" placeholder="例如：立即 WhatsApp 报名"></div>
@@ -491,7 +492,7 @@ function clearPendingProjectDraft(){
   selected=[];
   renderFiles();
   ['fileInput','aiMainFiles','aiReferenceFiles','aiCharacterFiles','aiAssetFiles','posterMainFiles','posterRefFiles'].forEach(id=>{$(id).value=''});
-  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName','posterTitle','posterFacts','posterCta'].forEach(id=>{$(id).value=''});
+  ['brief','projectName','aiHook','aiProof','aiCta','aiProjectName','posterBrand','posterTitle','posterFacts','posterCta'].forEach(id=>{$(id).value=''});
   $('notice').classList.remove('show');
   $('aiNotice').classList.remove('show');
   $('posterNotice').classList.remove('show');
@@ -513,6 +514,7 @@ async function selectProject(project){
   $('remixLanguage').value='跟随项目默认语言';
   $('posterLanguage').value='跟随项目默认语言';
   $('posterStyle').value='auto';
+  $('posterBrand').value=project.client_name||project.project_name||'';
   $('posterCta').value=project.cta||'';
   document.title=project.project_name+'｜鹿联视频员工';
   recordEvent('project_open','',{business_type:project.business_type});
@@ -702,11 +704,11 @@ $('posterSubmitBtn').onclick=async()=>{
   try{
     if(!currentProject)throw new Error('请先选择一个业务项目');
     const main=[...$('posterMainFiles').files];
-    const title=$('posterTitle').value.trim(),facts=$('posterFacts').value.trim(),cta=$('posterCta').value.trim();
-    if(!title||!facts||!cta)throw new Error('请填写主标题、准确事实和行动引导');
+    const brand=$('posterBrand').value.trim(),title=$('posterTitle').value.trim(),facts=$('posterFacts').value.trim(),cta=$('posterCta').value.trim();
+    if(!brand||!title||!facts||!cta)throw new Error('请填写品牌、主标题、准确事实和行动引导');
     const language=$('posterLanguage').value==='跟随项目默认语言'?currentProject.default_language:$('posterLanguage').value;
     const style=$('posterStyle').value;
-    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n视觉风格：${style}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${currentProject.client_name||currentProject.project_name}\n要求：高端商业广告质感，信息层级清楚，标题醒目，CTA明确，文字不压住人物脸部；正文必须由确定性排版生成，只能使用当前项目的准确事实。`;
+    const brief=`【海报制作】\n制作方式：${$('posterPurpose').value}\n尺寸：${$('posterSize').value}\n语言：${language}\n视觉风格：${style}\n主标题：${title}\n核心卖点与准确事实：${facts}\n行动引导：${cta}\n品牌：${brand}\n要求：高端商业广告质感，信息层级清楚，标题醒目，CTA明确，文字不压住人物脸部；正文必须由确定性排版生成，只能使用当前项目的准确事实。`;
     setPosterStatus('正在创建海报任务…',2);
     const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'image_poster',project_name:'广告海报 · '+title.slice(0,18),brief,output_count:1});
     const files=[...main.map(file=>({role:'main',file})),...[...$('posterRefFiles').files].map(file=>({role:'reference',file}))],meta=[];
