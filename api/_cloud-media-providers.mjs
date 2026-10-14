@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { experimental_generateVideo as generateVideo } from 'ai';
+import { createGateway } from '@ai-sdk/gateway';
 
 const OPENAI_IMAGE_URL = 'https://api.openai.com/v1/images/generations';
 const GATEWAY_IMAGE_URL = 'https://ai-gateway.vercel.sh/v1/images/generations';
@@ -43,9 +45,12 @@ function sha256(data) {
 
 function configuredVideoProvider(env) {
   const requested = String(env.AI_VIDEO_PROVIDER || 'auto').toLowerCase();
+  const gatewayReady = Boolean((env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN) && env.AI_GATEWAY_VIDEO_MODEL);
+  if (['gateway', 'vercel-ai-gateway'].includes(requested)) return gatewayReady ? 'vercel-ai-gateway' : null;
   if (requested === 'seedance') return env.ARK_API_KEY ? 'seedance' : null;
   if (requested === 'runway') return env.RUNWAYML_API_SECRET ? 'runway' : null;
   if (requested !== 'auto') return null;
+  if (gatewayReady) return 'vercel-ai-gateway';
   if (env.ARK_API_KEY) return 'seedance';
   if (env.RUNWAYML_API_SECRET) return 'runway';
   return null;
@@ -67,9 +72,59 @@ export function mediaProviderCapabilities(env = process.env) {
     imageProvider: image?.provider || null,
     video: on && Boolean(configuredVideoProvider(env)),
     videoProvider: on ? configuredVideoProvider(env) : null,
+    gatewayVideo: on && configuredVideoProvider(env) === 'vercel-ai-gateway',
     seedance: on && Boolean(env.ARK_API_KEY),
     runway: on && Boolean(env.RUNWAYML_API_SECRET),
   };
+}
+
+function gatewayProviderOptions(model, negativePrompt, env, maxWaitMs) {
+  if (model.startsWith('klingai/')) {
+    return {
+      klingai: {
+        mode: env.AI_GATEWAY_VIDEO_QUALITY || 'std',
+        cfgScale: Math.max(0, Math.min(1, Number(env.AI_GATEWAY_VIDEO_CFG_SCALE || 0.7))),
+        negativePrompt: String(negativePrompt || '').slice(0, 2500),
+        pollIntervalMs: 5000,
+        pollTimeoutMs: maxWaitMs,
+      },
+    };
+  }
+  if (model.startsWith('bytedance/')) return { bytedance: { pollIntervalMs: 5000, pollTimeoutMs: maxWaitMs } };
+  if (model.startsWith('spacexai/')) return { spacexai: { resolution: '720p', pollIntervalMs: 5000, pollTimeoutMs: maxWaitMs } };
+  return undefined;
+}
+
+async function generateGatewayVideo({ prompt, negativePrompt, duration, referenceImage, idempotencyKey, env, fetcher, onProgress, maxWaitMs, videoGenerator, gatewayFactory }) {
+  const token = env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN;
+  const model = String(env.AI_GATEWAY_VIDEO_MODEL || '');
+  if (!token || !model) throw new Error('gateway_video_not_configured');
+  if (model.includes('-i2v') && !referenceImage?.data) throw new Error('ai_video_reference_required');
+
+  const usingOidc = !env.AI_GATEWAY_API_KEY && Boolean(env.VERCEL_OIDC_TOKEN);
+  const gateway = gatewayFactory({
+    apiKey: token,
+    fetch: fetcher,
+    ...(usingOidc ? { headers: { 'ai-gateway-auth-method': 'oidc' } } : {}),
+  });
+  await onProgress?.(18, 'Vercel AI Gateway 正在提交人物一致性视频任务');
+  const result = await videoGenerator({
+    model: gateway.videoModel(model),
+    prompt: String(prompt).slice(0, 2500),
+    duration: Math.max(3, Math.min(15, Number(duration) || 5)),
+    aspectRatio: '9:16',
+    generateAudio: false,
+    ...(referenceImage?.data ? { inputReferences: [{ data: referenceImage.data, mediaType: referenceImage.type || 'image/jpeg' }] } : {}),
+    providerOptions: gatewayProviderOptions(model, negativePrompt, env, maxWaitMs),
+    headers: { 'idempotency-key': idempotencyKey },
+    poll: { intervalMs: 5000, timeoutMs: maxWaitMs },
+  });
+  const file = result?.videos?.[0];
+  const data = file?.uint8Array ? Buffer.from(file.uint8Array) : null;
+  if (!data || data.length < 1024 || data.length > MAX_VIDEO_BYTES) throw new Error('gateway_video_invalid_media');
+  const taskId = result?.providerMetadata?.gateway?.asyncJob?.jobId;
+  if (!taskId) throw new Error('gateway_video_missing_task_id');
+  return { data, provider: 'vercel-ai-gateway', model, taskId, type: file.mediaType || 'video/mp4' };
 }
 
 export async function generateOpenAiImage({ prompt, env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
@@ -196,23 +251,37 @@ async function generateSeedanceVideo({ prompt, duration, env, fetcher, sleeper, 
   return { data: await downloadProviderVideo(outputUrl, fetcher, 60000), provider: 'seedance', model, taskId };
 }
 
-export async function generateAiVideoClip({ prompt, duration = 5, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, maxWaitMs }) {
+export async function generateAiVideoClip({ prompt, negativePrompt = '', duration = 5, referenceImage, idempotencyKey = crypto.randomUUID(), env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, maxWaitMs, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (!enabled(env)) throw new Error('ai_media_generation_disabled');
   const provider = configuredVideoProvider(env);
   if (!provider) throw new Error('ai_video_provider_not_configured');
   const requestedWait = Number(maxWaitMs || env.AI_PROVIDER_MAX_WAIT_MS || 210000);
   const wait = Number.isFinite(requestedWait) ? Math.max(1000, requestedWait) : 210000;
-  const args = { prompt, duration, env, fetcher, sleeper, onProgress, maxWaitMs: wait };
-  const generated = provider === 'runway' ? await generateRunwayVideo(args) : await generateSeedanceVideo(args);
-  return { ...generated, type: 'video/mp4', sha256: sha256(generated.data) };
+  const args = { prompt, negativePrompt, duration, referenceImage, idempotencyKey, env, fetcher, sleeper, onProgress, maxWaitMs: wait, videoGenerator, gatewayFactory };
+  const generated = provider === 'vercel-ai-gateway'
+    ? await generateGatewayVideo(args)
+    : provider === 'runway' ? await generateRunwayVideo(args) : await generateSeedanceVideo(args);
+  return { ...generated, type: generated.type || 'video/mp4', sha256: sha256(generated.data) };
 }
 
 function visualPrompt(job, scene, position) {
-  const brief = String(job.brief || '').slice(0, 5000);
-  return `Create a premium vertical 9:16 commercial ${position} shot for this campaign. ${scene?.title || ''}. ${scene?.subtitle || ''}. Campaign context: ${brief}. Photorealistic, natural human movement and anatomy, polished lighting, clear subject, generous safe space for later overlay typography. Do not render any words, letters, subtitles, logos, prices, watermarks, UI, or QR codes inside the image/video.`;
+  const brief = String(job.brief || '').replaceAll('\\n', '\n');
+  const positiveContext = brief.split('\n').filter((line) => !/(禁止|不得|不要|排除|must[_ -]?exclude|negative)/i.test(line)).join(' ').slice(0, 1800);
+  const action = position === 'opening hook'
+    ? 'Open on immediate confident movement: the adult business spokesperson from the reference image enters a contemporary workplace and engages a business owner; use a subtle forward camera move and establish the problem within the first second.'
+    : 'End on a credible result moment: the same adult spokesperson and business owner review strong customer-enquiry results together; the camera settles into a clean confident composition with generous lower safe space for a later call-to-action overlay.';
+  return `Create a premium photorealistic vertical 9:16 social-media commercial ${position} shot. Preserve the exact adult spokesperson identity, face, hair, age, and wardrobe cues from the supplied reference image. ${action} Scene copy intent: ${scene?.title || ''}. ${scene?.subtitle || ''}. Campaign context: ${positiveContext}. Natural human motion and anatomy, polished commercial lighting, realistic Hong Kong business environment when relevant, strong visual focus, no baked-in typography. Do not render words, letters, subtitles, logos, prices, watermarks, interface text, or QR codes.`;
 }
 
-export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {} }) {
+function negativeVisualPrompt(job) {
+  const exclusions = String(job.brief || '').replaceAll('\\n', '\n').split('\n')
+    .filter((line) => /(禁止|不得|不要|排除|must[_ -]?exclude|negative)/i.test(line))
+    .join('; ')
+    .slice(0, 1200);
+  return `identity drift, different person, face morphing, distorted anatomy, extra fingers, deformed hands, duplicate people, text, letters, captions, subtitles, logos, watermarks, QR codes, UI text${exclusions ? `; ${exclusions}` : ''}`;
+}
+
+export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
   const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook');
   const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta');
@@ -226,12 +295,18 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
   // for posters, but silently substituting stills here would falsely report that
   // AI video generation succeeded.
   if (!capabilities.video) throw new Error('ai_video_provider_not_configured');
+  const reference = downloadedInputs.find((item) => item.role === 'character_reference' && String(item.type || '').startsWith('image/') && item.localPath);
+  const referenceData = reference ? await readFile(reference.localPath) : null;
+  if (referenceData && referenceData.length > 10 * 1024 * 1024) throw new Error('ai_video_reference_too_large');
+  const referenceImage = referenceData ? { data: referenceData, type: reference.type } : null;
+  const negativePrompt = negativeVisualPrompt(job);
   const generated = await Promise.all(missing.map(async (item, index) => {
     const prompt = visualPrompt(job, item.scene, item.position);
-    const result = await generateAiVideoClip({ prompt, duration: item.scene?.seconds || 5, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS });
-    const localPath = path.join(workdir, `${item.role}-${index}.mp4`);
+    const idempotencyKey = `v3-${crypto.createHash('sha256').update(`${job.id || 'job'}:${item.role}`).digest('hex').slice(0, 48)}`;
+    const result = await generateAiVideoClip({ prompt, negativePrompt, duration: item.scene?.seconds || 5, referenceImage, idempotencyKey, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS, videoGenerator, gatewayFactory });
+    const localPath = path.join(workdir, `${item.role}-${index}${result.type === 'video/webm' ? '.webm' : '.mp4'}`);
     await writeFile(localPath, result.data);
-    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256 } };
+    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, character_reference_used: Boolean(referenceImage) } };
   }));
   await onProgress(24, `AI 已生成 ${generated.length} 个补充镜头，开始混剪`);
   return { inputs: [...downloadedInputs, ...generated.map((item) => item.input)], generation: generated.map((item) => item.meta) };

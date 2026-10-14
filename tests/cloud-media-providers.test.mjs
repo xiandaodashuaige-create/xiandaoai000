@@ -20,10 +20,11 @@ const video = () => new Response(Buffer.alloc(2048, 7), {
 
 test('capabilities are false until the paid-generation switch is explicit', () => {
   assert.deepEqual(mediaProviderCapabilities({ OPENAI_API_KEY: 'secret', ARK_API_KEY: 'secret' }), {
-    enabled: false, image: false, imageProvider: null, video: false, videoProvider: null, seedance: false, runway: false,
+    enabled: false, image: false, imageProvider: null, video: false, videoProvider: null, gatewayVideo: false, seedance: false, runway: false,
   });
   assert.equal(mediaProviderCapabilities({ AI_MEDIA_GENERATION_ENABLED: 'true', OPENAI_API_KEY: 'secret' }).image, true);
   assert.equal(mediaProviderCapabilities({ AI_MEDIA_GENERATION_ENABLED: 'true', RUNWAYML_API_SECRET: 'secret' }).videoProvider, 'runway');
+  assert.equal(mediaProviderCapabilities({ AI_MEDIA_GENERATION_ENABLED: 'true', VERCEL_OIDC_TOKEN: 'oidc', AI_GATEWAY_VIDEO_MODEL: 'klingai/kling-v3.0-i2v' }).videoProvider, 'vercel-ai-gateway');
 });
 
 test('GPT image adapter sends the restored model contract and validates the image', async () => {
@@ -118,6 +119,91 @@ test('Seedance creates, polls and downloads a vertical clip', async () => {
   assert.equal(result.provider, 'seedance');
 });
 
+test('Vercel AI Gateway submits a reference-to-video job with OIDC and provenance', async () => {
+  let gatewaySettings;
+  let request;
+  const result = await generateAiVideoClip({
+    prompt: 'same spokesperson meets a salon owner',
+    negativePrompt: 'massage, text, identity drift',
+    duration: 5,
+    referenceImage: { data: Buffer.alloc(2048, 2), type: 'image/jpeg' },
+    idempotencyKey: 'v3-job-hook',
+    env: {
+      AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'vercel-ai-gateway',
+      VERCEL_OIDC_TOKEN: 'oidc-token', AI_GATEWAY_VIDEO_MODEL: 'klingai/kling-v3.0-i2v',
+    },
+    gatewayFactory: (settings) => {
+      gatewaySettings = settings;
+      return { videoModel: (id) => ({ id }) };
+    },
+    videoGenerator: async (options) => {
+      request = options;
+      return {
+        videos: [{ uint8Array: new Uint8Array(2048).fill(8), mediaType: 'video/mp4' }],
+        providerMetadata: { gateway: { asyncJob: { jobId: 'gateway-job-1', status: 'completed' } } },
+      };
+    },
+  });
+  assert.equal(gatewaySettings.apiKey, 'oidc-token');
+  assert.equal(gatewaySettings.headers['ai-gateway-auth-method'], 'oidc');
+  assert.equal(request.model.id, 'klingai/kling-v3.0-i2v');
+  assert.equal(request.aspectRatio, '9:16');
+  assert.equal(request.duration, 5);
+  assert.equal(request.generateAudio, false);
+  assert.equal(request.inputReferences[0].mediaType, 'image/jpeg');
+  assert.equal(request.headers['idempotency-key'], 'v3-job-hook');
+  assert.match(request.providerOptions.klingai.negativePrompt, /identity drift/);
+  assert.equal(result.provider, 'vercel-ai-gateway');
+  assert.equal(result.taskId, 'gateway-job-1');
+  assert.match(result.sha256, /^[a-f0-9]{64}$/);
+});
+
+test('Gateway image-to-video model fails before spending when character reference is absent', async () => {
+  await assert.rejects(
+    generateAiVideoClip({
+      prompt: 'vertical ad',
+      env: {
+        AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'vercel-ai-gateway',
+        VERCEL_OIDC_TOKEN: 'oidc-token', AI_GATEWAY_VIDEO_MODEL: 'klingai/kling-v3.0-i2v',
+      },
+    }),
+    /ai_video_reference_required/,
+  );
+});
+
+test('AI Hybrid sends the same character reference to hook and CTA gateway jobs', async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'ai-video-reference-'));
+  const referencePath = path.join(workdir, 'character.jpg');
+  await sharp({ create: { width: 640, height: 960, channels: 3, background: '#92776b' } }).jpeg().toFile(referencePath);
+  const requests = [];
+  try {
+    const result = await prepareAiHybridAssets({
+      job: { id: 'job-reference', workflow_mode: 'ai_hybrid', brief: '业务主题：香港美容院同区新客获取合作\n禁止出现：按摩、疗程操作' },
+      downloadedInputs: [{ role: 'character_reference', type: 'image/jpeg', localPath: referencePath }],
+      workdir,
+      scenes: [{ title: '你有客源焦虑吗', seconds: 5 }, { title: '立即了解获客方案', seconds: 5 }],
+      env: {
+        AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'vercel-ai-gateway',
+        VERCEL_OIDC_TOKEN: 'oidc-token', AI_GATEWAY_VIDEO_MODEL: 'klingai/kling-v3.0-i2v',
+      },
+      gatewayFactory: () => ({ videoModel: (id) => ({ id }) }),
+      videoGenerator: async (options) => {
+        requests.push(options);
+        return {
+          videos: [{ uint8Array: new Uint8Array(2048).fill(requests.length), mediaType: 'video/mp4' }],
+          providerMetadata: { gateway: { asyncJob: { jobId: `gateway-${requests.length}`, status: 'completed' } } },
+        };
+      },
+    });
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every((item) => Buffer.isBuffer(item.inputReferences[0].data)));
+    assert.deepEqual(result.generation.map((item) => item.character_reference_used), [true, true]);
+    assert.deepEqual(result.generation.map((item) => item.task_id), ['gateway-1', 'gateway-2']);
+    assert.match(requests[0].providerOptions.klingai.negativePrompt, /禁止出现：按摩、疗程操作/);
+    assert.notEqual(requests[0].headers['idempotency-key'], requests[1].headers['idempotency-key']);
+  } finally { await rm(workdir, { recursive: true, force: true }); }
+});
+
 test('AI Hybrid fails closed when only still-image generation is configured', async () => {
   await assert.rejects(
     prepareAiHybridAssets({
@@ -192,9 +278,9 @@ test('poster UI permits an empty main image and the worker uses only role=main a
 
 test('capability endpoint separates installed adapters from configured providers', async () => {
   const worker = await readFile(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
-  assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway', 'seedance', 'runway'\]/);
+  assert.match(worker, /provider_adapters: \['openai_image', 'vercel_ai_gateway_image', 'vercel_ai_gateway_video', 'seedance', 'runway'\]/);
   assert.match(worker, /req\.headers\['x-vercel-oidc-token'\]/);
   assert.match(worker, /providers: mediaProviderCapabilities\(mediaEnv\)/);
   assert.match(worker, /AI 视频生成失败，未回退到普通素材混剪/);
-  assert.match(worker, /mode: 'ai_hybrid_fail_closed'/);
+  assert.match(worker, /mode: 'ai_hybrid_gateway_reference'/);
 });
