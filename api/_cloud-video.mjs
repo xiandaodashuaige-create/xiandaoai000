@@ -6,6 +6,7 @@ import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob } from '
 import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
 import sharp from 'sharp';
 import { prepareAiHybridAssets } from './_cloud-media-providers.mjs';
+import { planRemix } from './_cloud-remix.mjs';
 
 // Output is 1080x1920 to match the local worker. Overlay layout is authored
 // at 720 and scaled by K so both paths keep the same proportions.
@@ -313,15 +314,24 @@ export async function renderVoiceTrack({ job, scenes, workdir, synthesize, timeo
 }
 
 export async function renderCloudVideo(job, downloadedInputs, onProgress = async () => {}, options = {}) {
-  // Inputs live in /tmp/video-<job>/input-*. Clean only render intermediates;
-  // deleting the job root here destroys the sources downloaded by the worker.
-  const workdir = path.join('/tmp', `video-${job.id}`, 'render');
+  // Inputs live in /tmp/video-<job>/input-*. Clean only render intermediates;\n  // deleting the job root here destroys the sources downloaded by the worker.\n  const workdir = path.join('/tmp', `video-${job.id}`, 'render');
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const scenes = copyFor(job);
   const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress, env: options.mediaEnv || process.env });
   const activeInputs = prepared.inputs;
-  const visual = selectSceneSources(activeInputs);
+  // Remix jobs (#564): each storyboard slot is filled from a seeded plan over
+  // the customer's uploaded footage. Other jobs keep the role-based selection.
+  const isRemix = job.workflow_mode === 'remix';
+  const remixDurations = new Map();
+  if (isRemix) {
+    for (const input of activeInputs) {
+      if (/^(video|image)\//.test(String(input.type || ''))) remixDurations.set(input.localPath, await sourceDuration(input.localPath));
+    }
+  }
+  const remix = isRemix ? planRemix({ inputs: activeInputs, durations: remixDurations, seedText: job.id, slotCount: scenes.length }) : null;
+  if (remix && !remix.ok) throw new Error(remix.reason);
+  const visual = remix ? remix.slots.map((slot) => slot.clip) : selectSceneSources(activeInputs);
   if (!visual.length) throw new Error('missing_visual_input');
   const uploadedVoice = activeInputs.find((item) => item.role === 'voiceover' && String(item.type || '').startsWith('audio/'))?.localPath;
   const bgm = activeInputs.find((item) => item.role === 'bgm' && String(item.type || '').startsWith('audio/'))?.localPath;
@@ -342,9 +352,13 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   for (const source of visual) {
     if (!durationBySource.has(source.localPath)) durationBySource.set(source.localPath, await sourceDuration(source.localPath));
   }
+  if (remix) {
+    for (const [localPath, duration] of remixDurations) durationBySource.set(localPath, duration);
+  }
   for (let index = 0; index < scenes.length; index += 1) {
     const source = visual[index] || visual[index % visual.length];
-    const start = sceneStarts(durationBySource.get(source.localPath) || 0, scenes)[index];
+    // A remix slot carries its own start point; other jobs spread starts over the clip.
+    const start = remix ? source.start : sceneStarts(durationBySource.get(source.localPath) || 0, scenes)[index];
     const overlay = path.join(workdir, `overlay-${index}.png`);
     const segment = path.join(workdir, `segment-${index}.mp4`);
     await overlayPng(scenes[index], overlay);
@@ -368,5 +382,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   return {
     data: await readFile(result), durationSeconds: expectedDuration, width: WIDTH, height: HEIGHT,
     voiceSource, voiceError, quality, mediaGeneration: prepared.generation,
+    ...(remix ? { remix: { seed: remix.seed, reusedSlots: remix.reusedSlots, order: remix.slots.map((slot) => ({ role: slot.role, start: slot.clip.start, source: slot.clip.name })) } } : {}),
   };
 }
+
