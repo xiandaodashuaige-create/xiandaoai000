@@ -10,8 +10,7 @@ export default async function handler(req, res) {
   const result = await runOne(access, {
     ...process.env,
     AI_MEDIA_GENERATION_ENABLED: 'true',
-    OPENAI_IMAGE_MODEL: 'recraft/recraft-v4.1-flash',
-    OPENAI_IMAGE_SIZE: '1024x1024',
+    OPENAI_IMAGE_MODEL: 'openai/gpt-image-2',
     VERCEL_OIDC_TOKEN: oidcToken,
   });
   return res.status(result.ok ? 200 : 202).json(result);
