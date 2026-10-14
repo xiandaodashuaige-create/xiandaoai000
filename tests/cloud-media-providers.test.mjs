@@ -164,6 +164,9 @@ test('poster UI permits an empty main image and the worker uses only role=main a
   assert.doesNotMatch(ui, /if\(!main\.length\)throw new Error/);
   assert.match(worker, /inputs\.find\(\(item\) => item\.role === 'main'\);/);
   assert.doesNotMatch(worker, /missing_main_visual/);
+  assert.match(worker, /async function posterSource\(main, jobId\)/);
+  assert.match(worker, /'-ss', '1'.*'-frames:v', '1'/s);
+  assert.doesNotMatch(worker, /video_poster_source_requires_local_ffmpeg/);
 });
 
 test('capability endpoint separates installed adapters from configured providers', async () => {
