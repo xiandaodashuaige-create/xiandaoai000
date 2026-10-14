@@ -255,8 +255,8 @@ Deno.serve(async (req: Request) => {
         p_job_id: jobId,
         p_actor_id: String(body.actor_id || "v3_ads_employee"),
         p_event_type: String(body.event_type || "project_note"),
-        p_feedback_text: feedbackText,
-        p_payload: body.payload && typeof body.payload === "object" ? body.payload : {},
+        p_content: feedbackText,
+        p_metadata: body.payload && typeof body.payload === "object" ? body.payload : {},
       });
       if (error) return json({ error: errMsg(error) }, 500);
       return json({ ok: true, feedback: data });
