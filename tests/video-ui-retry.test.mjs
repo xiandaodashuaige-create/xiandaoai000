@@ -20,3 +20,15 @@ test('result preview opens synchronously before the asynchronous storage downloa
   assert.match(block, /preview\.location\.href=u/);
   assert.match(block, /preview\?\.close\(\)/);
 });
+
+test('completed results expose a direct browser download action', () => {
+  const block = source.slice(
+    source.indexOf("root.querySelectorAll('.result-save')"),
+    source.indexOf("root.querySelector('.revise-job')"),
+  );
+  assert.match(source, /下载成片 /);
+  assert.match(source, /下载海报 /);
+  assert.match(block, /link\.download=btn\.dataset\.path\.split\('\/'\)\.pop\(\)/);
+  assert.match(block, /link\.click\(\)/);
+  assert.match(block, /link\.remove\(\)/);
+});
