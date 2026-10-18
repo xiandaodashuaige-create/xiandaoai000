@@ -43,6 +43,17 @@ function sha256(data) {
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+function referenceImageDataUri(referenceImage, maxBytes = Infinity) {
+  if (!referenceImage?.data) throw new Error('ai_video_reference_required');
+  const data = Buffer.from(referenceImage.data);
+  if (!data.length) throw new Error('ai_video_reference_required');
+  const type = String(referenceImage.type || '').toLowerCase();
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(type)) throw new Error('ai_video_reference_unsupported_type');
+  const uri = `data:${type};base64,${data.toString('base64')}`;
+  if (Buffer.byteLength(uri) > maxBytes) throw new Error('ai_video_reference_provider_limit');
+  return uri;
+}
+
 function configuredVideoProvider(env) {
   const requested = String(env.AI_VIDEO_PROVIDER || 'auto').toLowerCase();
   const gatewayReady = Boolean((env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN) && env.AI_GATEWAY_VIDEO_MODEL);
@@ -57,9 +68,10 @@ function configuredVideoProvider(env) {
 }
 
 function imageProviderConfig(env) {
-  if (env.OPENAI_API_KEY) return { provider: 'openai', token: env.OPENAI_API_KEY, url: OPENAI_IMAGE_URL, model: env.OPENAI_IMAGE_MODEL || 'gpt-image-2' };
+  const requestedModel = String(env.OPENAI_IMAGE_MODEL || 'gpt-image-2');
+  if (env.OPENAI_API_KEY) return { provider: 'openai', token: env.OPENAI_API_KEY, url: OPENAI_IMAGE_URL, model: requestedModel.replace(/^openai\//, '') };
   const gatewayToken = env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN;
-  if (gatewayToken) return { provider: 'vercel-ai-gateway', token: gatewayToken, url: GATEWAY_IMAGE_URL, model: env.OPENAI_IMAGE_MODEL || 'openai/gpt-image-2' };
+  if (gatewayToken) return { provider: 'vercel-ai-gateway', token: gatewayToken, url: GATEWAY_IMAGE_URL, model: requestedModel.includes('/') ? requestedModel : `openai/${requestedModel}` };
   return null;
 }
 
@@ -222,13 +234,17 @@ async function downloadProviderVideo(url, fetcher, timeoutMs) {
   return data;
 }
 
-async function generateRunwayVideo({ prompt, duration, env, fetcher, sleeper, onProgress, maxWaitMs }) {
+async function generateRunwayVideo({ prompt, duration, referenceImage, env, fetcher, sleeper, onProgress, maxWaitMs }) {
   const key = env.RUNWAYML_API_SECRET;
   if (!key) throw new Error('runway_not_configured');
   const headers = apiHeaders(key, { 'X-Runway-Version': env.RUNWAY_API_VERSION || '2024-11-06' });
-  const create = await fetcher(`${RUNWAY_BASE}/v1/text_to_video`, {
+  // Runway accepts base64 data URIs anywhere it accepts an image URL, with a
+  // 5 MB encoded limit. Failing before task creation prevents a paid but
+  // identity-unanchored spokesperson clip.
+  const promptImage = referenceImageDataUri(referenceImage, 5 * 1024 * 1024);
+  const create = await fetcher(`${RUNWAY_BASE}/v1/image_to_video`, {
     method: 'POST', headers, signal: timeoutSignal(30000),
-    body: JSON.stringify({ model: env.RUNWAY_VIDEO_MODEL || 'gen4.5', promptText: String(prompt).slice(0, 1000), ratio: '768:1280', duration: Math.max(5, Math.min(10, Number(duration) || 5)) }),
+    body: JSON.stringify({ model: env.RUNWAY_VIDEO_MODEL || 'gen4.5', promptImage, promptText: String(prompt).slice(0, 1000), ratio: '768:1280', duration: Math.max(5, Math.min(10, Number(duration) || 5)) }),
   });
   const created = await jsonResponse(create, 'runway_create');
   const taskId = created?.id || created?.taskId;
@@ -240,15 +256,27 @@ async function generateRunwayVideo({ prompt, duration, env, fetcher, sleeper, on
   return { data: await downloadProviderVideo(outputUrl, fetcher, 60000), provider: 'runway', model: env.RUNWAY_VIDEO_MODEL || 'gen4.5', taskId };
 }
 
-async function generateSeedanceVideo({ prompt, duration, env, fetcher, sleeper, onProgress, maxWaitMs }) {
+async function generateSeedanceVideo({ prompt, duration, referenceImage, env, fetcher, sleeper, onProgress, maxWaitMs }) {
   const key = env.ARK_API_KEY;
   if (!key) throw new Error('seedance_not_configured');
   const base = cleanBase(env.SEEDANCE_API_BASE || DEFAULT_SEEDANCE_BASE);
   const headers = apiHeaders(key);
   const model = env.SEEDANCE_VIDEO_MODEL || 'dreamina-seedance-2-5-260628';
+  const referenceUrl = referenceImageDataUri(referenceImage, 30 * 1024 * 1024);
   const create = await fetcher(`${base}/contents/generations/tasks`, {
     method: 'POST', headers, signal: timeoutSignal(30000),
-    body: JSON.stringify({ model, content: [{ type: 'text', text: String(prompt).slice(0, 8000) }], ratio: '9:16', duration: Math.max(4, Math.min(12, Number(duration) || 5)), generate_audio: false, watermark: false }),
+    body: JSON.stringify({
+      model,
+      omni_reference_task_type: 'reference',
+      content: [
+        { type: 'text', text: String(prompt).slice(0, 8000) },
+        { type: 'image_url', image_url: { url: referenceUrl }, role: 'reference_image' },
+      ],
+      ratio: '9:16',
+      duration: Math.max(4, Math.min(12, Number(duration) || 5)),
+      generate_audio: false,
+      watermark: false,
+    }),
   });
   const created = await jsonResponse(create, 'seedance_create');
   const taskId = created?.id || created?.task_id || created?.data?.id || created?.data?.task_id;
@@ -320,6 +348,7 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
   const referenceData = reference ? await readFile(reference.localPath) : null;
   if (referenceData && referenceData.length > 10 * 1024 * 1024) throw new Error('ai_video_reference_too_large');
   const referenceImage = referenceData ? { data: referenceData, type: reference.type } : null;
+  if (!referenceImage) throw new Error('ai_video_reference_required');
   const negativePrompt = negativeVisualPrompt(job);
   const generated = await Promise.all(missing.map(async (item, index) => {
     const prompt = visualPrompt(job, item.scene, item.position);
@@ -327,7 +356,7 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
     const result = await generateAiVideoClip({ prompt, negativePrompt, duration: item.scene?.seconds || 5, referenceImage, idempotencyKey, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS, videoGenerator, gatewayFactory });
     const localPath = path.join(workdir, `${item.role}-${index}${result.type === 'video/webm' ? '.webm' : '.mp4'}`);
     await writeFile(localPath, result.data);
-    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, character_reference_used: Boolean(referenceImage) } };
+    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, character_reference_used: true, duration_seconds: item.scene?.seconds || 5, billing_route: result.provider === 'vercel-ai-gateway' ? 'gateway' : 'direct' } };
   }));
   await onProgress(24, `AI 已生成 ${generated.length} 个补充镜头，开始混剪`);
   return { inputs: [...downloadedInputs, ...generated.map((item) => item.input)], generation: generated.map((item) => item.meta) };
