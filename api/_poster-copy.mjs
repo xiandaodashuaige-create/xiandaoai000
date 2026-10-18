@@ -164,3 +164,10 @@ export function posterSafeZone(height, key) {
   if (key === 'story') return { top: Math.round(height * 0.14), bottom: Math.round(height * 0.2) };
   return { top: Math.round(height * 0.06), bottom: Math.round(height * 0.055) };
 }
+
+/** Short, secret-free reason code for a failed job, safe to show in the chat
+ * stage line: only the leading [a-z0-9_] token of the error ("openai_image_429"). */
+export function safeErrorCode(message) {
+  const token = String(message || '').toLowerCase().split(/[^a-z0-9_]/)[0].replace(/_+$/, '').slice(0, 48);
+  return token || 'unknown_error';
+}
