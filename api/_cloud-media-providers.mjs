@@ -136,7 +136,7 @@ async function generateGatewayVideo({ prompt, negativePrompt, duration, referenc
   return { data, provider: 'vercel-ai-gateway', model, taskId, type: file.mediaType || 'video/mp4' };
 }
 
-export async function generateOpenAiImage({ prompt, env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
+export async function generateOpenAiImage({ prompt, size, env = process.env, fetcher = fetch, timeoutMs = 120000 }) {
   if (!enabled(env)) throw new Error('ai_media_generation_disabled');
   const image = imageProviderConfig(env);
   if (!image) throw new Error('openai_image_not_configured');
@@ -147,7 +147,7 @@ export async function generateOpenAiImage({ prompt, env = process.env, fetcher =
     body: JSON.stringify({
       model: image.model,
       prompt: String(prompt || '').slice(0, 12000),
-      size: env.OPENAI_IMAGE_SIZE || '1088x1360',
+      size: size || env.OPENAI_IMAGE_SIZE || '1088x1360',
       quality: env.OPENAI_IMAGE_QUALITY || 'medium',
       output_format: 'webp',
       moderation: 'auto',

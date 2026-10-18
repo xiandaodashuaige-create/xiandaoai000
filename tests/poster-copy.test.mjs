@@ -63,3 +63,28 @@ test('revision: no marker means no change', () => {
 test('revision text reaches the background prompt', () => {
   assert.match(buildPosterPrompt({ purpose: '美甲店', revision: '背景换成粉色' }), /背景换成粉色/);
 });
+
+import { META_POSTER_SIZES, posterPlacement, posterSafeZone } from '../api/_poster-copy.mjs';
+
+test('poster size is always one of the Meta placements', () => {
+  assert.equal(posterPlacement('尺寸：1080x1350（信息流）').key, 'feed');
+  assert.equal(posterPlacement('尺寸：1080x1080').key, 'square');
+  assert.equal(posterPlacement('尺寸：1080x1920').key, 'story');
+  assert.equal(posterPlacement('尺寸：999x999').key, 'feed');
+  assert.equal(posterPlacement('主标题：七夕').key, 'feed');
+  for (const size of Object.values(META_POSTER_SIZES)) {
+    const [w, h] = size.generate.split('x').map(Number);
+    assert.equal(w % 16, 0);
+    assert.equal(h % 16, 0);
+    assert.ok(Math.abs(w / h - size.width / size.height) < 0.01);
+  }
+});
+
+test('stories keep the top 14% and bottom 20% free', () => {
+  assert.deepEqual(posterSafeZone(1920, 'story'), { top: 269, bottom: 384 });
+  assert.ok(posterSafeZone(1350, 'feed').top < 100);
+});
+
+test('story prompt asks the model to keep the UI zones clear', () => {
+  assert.match(buildPosterPrompt({ purpose: 'x', placement: 'story' }), /top 14 percent/);
+});
