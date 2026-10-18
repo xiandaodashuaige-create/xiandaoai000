@@ -99,3 +99,11 @@ test('image prompt never carries prices or digits, and layout-only revisions sta
   const mixed = parsePosterRevision('x\n\n【基于上一版继续优化】\n标题大一点，背景换成粉色花瓣');
   assert.equal(mixed.background, '背景换成粉色花瓣');
 });
+
+test('safeErrorCode keeps only the leading code token and never the payload', async () => {
+  const { safeErrorCode } = await import('../api/_poster-copy.mjs');
+  assert.equal(safeErrorCode('openai_image_429_{"error":"rate limit sk-secret"}'), 'openai_image_429');
+  assert.equal(safeErrorCode('gateway_video_not_configured'), 'gateway_video_not_configured');
+  assert.equal(safeErrorCode(''), 'unknown_error');
+  assert.equal(safeErrorCode('用中文的错误'), 'unknown_error');
+});

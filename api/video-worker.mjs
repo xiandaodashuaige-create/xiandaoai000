@@ -7,7 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
-import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone } from './_poster-copy.mjs';
+import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -166,13 +166,18 @@ export async function renderPoster(job, input) {
   const gap = Math.round(height * 0.022);
   let cursor = height - safe.bottom;
   if (cta) {
-    const ctaWidth = Math.min(contentWidth, Math.max(Math.round(width * 0.58), 520));
-    const ctaText = await textLayer(cta, font, Math.round(width * 0.041), ctaWidth - 72, onAccent, 800);
+    // Full-width action bar (>= 80% of the frame) with a chat/phone glyph: the
+    // one element every high-performing reference ad shared.
+    const ctaWidth = contentWidth;
+    const ctaH = 104;
+    const iconSize = 56;
+    const ctaText = await textLayer(cta, font, Math.round(width * 0.043), ctaWidth - iconSize - 96, onAccent, 800);
     const ctaMeta = await sharp(ctaText).metadata();
-    const ctaH = 96;
     cursor -= ctaH;
+    const icon = Buffer.from(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg"><circle cx="28" cy="28" r="28" fill="${onAccent}"/><g transform="translate(14 14) scale(1.17)"><path fill="${accent}" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></g></svg>`);
     composites.push({ input: pill(ctaWidth, ctaH, accent), top: cursor, left: margin });
-    composites.push(await layer(ctaText, margin + 36, cursor + Math.max(10, (ctaH - Number(ctaMeta.height || 50)) / 2)));
+    composites.push({ input: icon, top: Math.round(cursor + (ctaH - iconSize) / 2), left: margin + 28 });
+    composites.push(await layer(ctaText, margin + 28 + iconSize + 24, cursor + Math.max(10, (ctaH - Number(ctaMeta.height || 50)) / 2)));
     cursor -= gap * 1.4;
   }
   if (copy.lines.length > 0) {
@@ -293,7 +298,17 @@ async function runOne(accessCode, mediaEnv = process.env) {
     if (job.workflow_mode === 'ai_hybrid') {
       await rpc('video_agent_worker_update', {
         p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 100,
-        p_stage: 'AI 视频生成失败，未回退到普通素材混剪', p_output_files: [],
+        p_stage: `AI 视频生成失败，未回退到普通素材混剪（原因：${safeErrorCode(message)}）`, p_output_files: [],
+        p_error_message: message,
+      });
+      return { ok: false, claimed: true, job_id: job.id, fallback: null, error: message };
+    }
+    if (job.workflow_mode === 'image_poster' && /^(ai_media|openai_image|gateway)/.test(message)) {
+      // The AI background failed in the cloud. Say so with a short safe code
+      // instead of handing the poster to an offline local factory.
+      await rpc('video_agent_worker_update', {
+        p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 100,
+        p_stage: `海报背景生成失败（原因：${safeErrorCode(message)}）`, p_output_files: [],
         p_error_message: message,
       });
       return { ok: false, claimed: true, job_id: job.id, fallback: null, error: message };
