@@ -44,7 +44,7 @@ export function styleHint(style) {
 /** Background prompt. The customer's own words (what the business is, the
  * occasion, the style) steer the scene; the model is told to draw a real
  * service moment rather than an empty room, and to draw no lettering. */
-export function buildPosterPrompt({ purpose, style, title, brand, facts, revision }) {
+export function buildPosterPrompt({ purpose, style, title, brand, facts, revision, placement = 'feed' }) {
   const context = [purpose, title].filter(Boolean).join(' / ');
   return [
     `Create a premium vertical advertising photograph for a local beauty / lifestyle business${brand ? ` named "${brand}"` : ''}.`,
@@ -53,6 +53,8 @@ export function buildPosterPrompt({ purpose, style, title, brand, facts, revisio
     `Mood and style: ${styleHint(style)}${style ? ` (customer asked for: ${style})` : ''}.`,
     'Show a real, believable moment of the service or product being enjoyed - a relaxed client with hands, product or result clearly visible, natural anatomy, warm professional lighting, one strong focal subject.',
     revision ? `The customer asked for this change to the previous version - follow it: ${revision}.` : '',
+    placement === 'story' ? 'Vertical 9:16 Stories/Reels frame: keep the top 14 percent and bottom 22 percent free of faces and key subject.' : '',
+    placement === 'square' ? 'Square 1:1 frame: centre the focal subject with calm space for text at the bottom.' : '',
     'Compose for a social-media ad: keep the lower 40 percent calm and darker so overlaid typography stays legible, and keep faces out of the lower third.',
     'Absolutely no words, letters, numbers, prices, logos, watermarks, UI, QR codes or captions anywhere in the image.',
   ].filter(Boolean).join(' ');
@@ -125,4 +127,31 @@ export function parsePosterRevision(brief) {
     if (hit) options.accent = hit[1];
   }
   return options;
+}
+
+/** Meta ad placements the poster can be made for. Anything else falls back to
+ * the feed size, so a malformed brief can never produce an off-spec image.
+ * `generate` is the size requested from the image model (multiples of 16 at
+ * the same ratio); the final image is always exactly `width` x `height`. */
+export const META_POSTER_SIZES = {
+  feed: { width: 1080, height: 1350, generate: '1088x1360', label: 'Feed 4:5' },
+  square: { width: 1080, height: 1080, generate: '1024x1024', label: 'Square 1:1' },
+  story: { width: 1080, height: 1920, generate: '1088x1920', label: 'Stories/Reels 9:16' },
+};
+
+export function posterPlacement(brief) {
+  const match = String(brief || '').match(/尺寸[：:][^\n]*?(\d{3,4})\s*[x×]\s*(\d{3,4})/i);
+  const width = match ? Number(match[1]) : 1080;
+  const height = match ? Number(match[2]) : 1350;
+  const hit = Object.entries(META_POSTER_SIZES).find(([, size]) => size.width === width && size.height === height);
+  const key = hit ? hit[0] : 'feed';
+  return { key, ...META_POSTER_SIZES[key] };
+}
+
+/** Stories / Reels put the app's own UI over the top ~14% and bottom ~20% of
+ * the frame, so nothing important may sit there. Feed and square keep a small
+ * margin only. */
+export function posterSafeZone(height, key) {
+  if (key === 'story') return { top: Math.round(height * 0.14), bottom: Math.round(height * 0.2) };
+  return { top: Math.round(height * 0.06), bottom: Math.round(height * 0.055) };
 }

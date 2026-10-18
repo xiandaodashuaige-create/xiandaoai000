@@ -7,7 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
-import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision } from './_poster-copy.mjs';
+import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone } from './_poster-copy.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -131,9 +131,9 @@ function hexToRgb(value) {
 export async function renderPoster(job, input) {
   const font = await ensureFont();
   const brief = String(job.brief || '');
-  const size = briefValue(brief, '尺寸', '1080x1350').match(/(\d+)x(\d+)/i);
-  const width = Math.max(640, Math.min(2160, Number(size?.[1] || 1080)));
-  const height = Math.max(640, Math.min(2160, Number(size?.[2] || 1350)));
+  const placement = posterPlacement(brief);
+  const { width, height } = placement;
+  const safe = posterSafeZone(height, placement.key);
   const margin = Math.round(width * 0.075);
   const contentWidth = width - margin * 2;
   const title = briefValue(brief, '主标题', job.project_name || '营销海报');
@@ -157,14 +157,14 @@ export async function renderPoster(job, input) {
   const brandText = await textLayer(brand.slice(0, 28), font, Math.round(width * 0.032), Math.round(width * 0.5), onAccent, 700);
   const brandMeta = await sharp(brandText).metadata();
   const brandW = Number(brandMeta.width || 200) + 48;
-  const brandTop = Math.round(height * 0.06);
+  const brandTop = safe.top;
   composites.push({ input: pill(brandW, 62, accent), top: brandTop, left: margin });
   composites.push(await layer(brandText, margin + 24, brandTop + Math.max(8, (62 - Number(brandMeta.height || 40)) / 2)));
 
   // Build the bottom stack from the call-to-action upward so nothing can
   // overflow the canvas, whatever the copy length.
   const gap = Math.round(height * 0.022);
-  let cursor = height - Math.round(height * 0.055);
+  let cursor = height - safe.bottom;
   if (cta) {
     const ctaWidth = Math.min(contentWidth, Math.max(Math.round(width * 0.58), 520));
     const ctaText = await textLayer(cta, font, Math.round(width * 0.041), ctaWidth - 72, onAccent, 800);
@@ -207,7 +207,7 @@ export async function renderPoster(job, input) {
   const titleMeta = await sharp(titleText).metadata();
   // With little copy the title sits in the lower third rather than on the very bottom edge.
   const titleBottom = Math.min(cursor, Math.round(height * 0.8));
-  const titleTop = Math.max(Math.round(height * 0.2), Math.round(titleBottom - Number(titleMeta.height || 130)));
+  const titleTop = Math.max(safe.top + 100, Math.round(titleBottom - Number(titleMeta.height || 130)));
   composites.push({ input: titleText, top: titleTop, left: margin });
 
   return sharp(base).composite(composites).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
@@ -221,6 +221,7 @@ function posterGenerationPrompt(job) {
     brand: briefValue(job.brief, '品牌', ''),
     facts: briefValue(job.brief, '核心卖点与准确事实', ''),
     revision: parsePosterRevision(job.brief).text,
+    placement: posterPlacement(job.brief).key,
   });
 }
 
@@ -245,7 +246,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
         source = await posterSource(main, job.id);
       } else {
         await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
-        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), env: mediaEnv });
+        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), size: posterPlacement(job.brief).generate, env: mediaEnv });
         source = generated.data;
         artifactMeta = { generated_background: true, image_provider: generated.provider, image_model: generated.model, source_sha256: generated.sha256 };
       }
