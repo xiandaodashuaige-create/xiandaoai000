@@ -7,6 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
+import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision } from './_poster-copy.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -122,6 +123,11 @@ async function textLayer(text, fontFile, size, width, color = '#ffffff', weight 
   }).png().toBuffer();
 }
 
+function hexToRgb(value) {
+  const n = parseInt(value.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
 export async function renderPoster(job, input) {
   const font = await ensureFont();
   const brief = String(job.brief || '');
@@ -132,41 +138,90 @@ export async function renderPoster(job, input) {
   const contentWidth = width - margin * 2;
   const title = briefValue(brief, '主标题', job.project_name || '营销海报');
   const facts = briefValue(brief, '核心卖点与准确事实', briefValue(brief, '准确价格/优惠/事实', ''));
-  const cta = briefValue(brief, '行动引导', '立即了解');
+  const cta = briefValue(brief, '行动引导', '');
   const brand = briefValue(brief, '品牌', briefValue(brief, '客户', 'LULIAN AI'));
+  const copy = parsePosterFacts(facts);
+  const revision = parsePosterRevision(brief);
 
-  const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.92, saturation: 0.96 }).toBuffer();
-  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#02140d" stop-opacity=".18"/><stop offset=".46" stop-color="#03120c" stop-opacity=".14"/><stop offset="1" stop-color="#020b07" stop-opacity=".92"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
-  const brandBg = Buffer.from(`<svg width="${Math.round(width * .44)}" height="66" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="33" fill="#28d57e"/></svg>`);
-  const ctaWidth = Math.min(contentWidth, Math.max(Math.round(width * .52), 500));
-  const ctaBg = Buffer.from(`<svg width="${ctaWidth}" height="92" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="46" fill="#28d57e"/></svg>`);
-  const [brandText, titleText, factText, ctaText] = await Promise.all([
-    textLayer(brand.slice(0, 28), font, Math.round(width * .032), Math.round(width * .37), '#ffffff', 700),
-    textLayer(title, font, Math.round(width * .072), contentWidth, '#ffffff', 800),
-    textLayer(facts.replaceAll('｜', ' · '), font, Math.round(width * .039), contentWidth, '#e2f4ea', 400),
-    textLayer(cta, font, Math.round(width * .041), ctaWidth - 72, '#021b0f', 800),
-  ]);
-  const [titleMeta, factMeta, ctaMeta] = await Promise.all([sharp(titleText).metadata(), sharp(factText).metadata(), sharp(ctaText).metadata()]);
-  const titleTop = Math.max(Math.round(height * .49), height - Number(titleMeta.height || 130) - Number(factMeta.height || 70) - 230);
-  const factsTop = titleTop + Number(titleMeta.height || 130) + 28;
-  const ctaTop = Math.min(height - 120, factsTop + Number(factMeta.height || 70) + 36);
+  const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.95, saturation: 1.02 }).toBuffer();
+  const picked = accentFromDominant((await sharp(base).stats()).dominant);
+  const accent = revision.accent || picked.accent;
+  const onAccent = revision.accent ? accentFromDominant(hexToRgb(revision.accent)).onAccent : picked.onAccent;
+  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050505" stop-opacity=".16"/><stop offset=".34" stop-color="#050505" stop-opacity=".10"/><stop offset=".62" stop-color="#050505" stop-opacity=".58"/><stop offset="1" stop-color="#050505" stop-opacity=".9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  const pill = (w, h, fill, opacity = 1) => Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="${h / 2}" fill="${fill}" fill-opacity="${opacity}"/></svg>`);
+  const layer = async (input_, left, top) => ({ input: await input_, left: Math.round(left), top: Math.round(top) });
 
-  return sharp(base).composite([
-    { input: shade, top: 0, left: 0 },
-    { input: brandBg, top: Math.round(height * .065), left: margin },
-    { input: brandText, top: Math.round(height * .065) + 13, left: margin + 24 },
-    { input: titleText, top: titleTop, left: margin },
-    { input: factText, top: factsTop, left: margin },
-    { input: ctaBg, top: ctaTop, left: margin },
-    { input: ctaText, top: ctaTop + Math.max(10, Math.round((92 - Number(ctaMeta.height || 50)) / 2)), left: margin + 36 },
-  ]).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
+  const composites = [{ input: shade, top: 0, left: 0 }];
+
+  // Brand chip, top-left, sized to its own text.
+  const brandText = await textLayer(brand.slice(0, 28), font, Math.round(width * 0.032), Math.round(width * 0.5), onAccent, 700);
+  const brandMeta = await sharp(brandText).metadata();
+  const brandW = Number(brandMeta.width || 200) + 48;
+  const brandTop = Math.round(height * 0.06);
+  composites.push({ input: pill(brandW, 62, accent), top: brandTop, left: margin });
+  composites.push(await layer(brandText, margin + 24, brandTop + Math.max(8, (62 - Number(brandMeta.height || 40)) / 2)));
+
+  // Build the bottom stack from the call-to-action upward so nothing can
+  // overflow the canvas, whatever the copy length.
+  const gap = Math.round(height * 0.022);
+  let cursor = height - Math.round(height * 0.055);
+  if (cta) {
+    const ctaWidth = Math.min(contentWidth, Math.max(Math.round(width * 0.58), 520));
+    const ctaText = await textLayer(cta, font, Math.round(width * 0.041), ctaWidth - 72, onAccent, 800);
+    const ctaMeta = await sharp(ctaText).metadata();
+    const ctaH = 96;
+    cursor -= ctaH;
+    composites.push({ input: pill(ctaWidth, ctaH, accent), top: cursor, left: margin });
+    composites.push(await layer(ctaText, margin + 36, cursor + Math.max(10, (ctaH - Number(ctaMeta.height || 50)) / 2)));
+    cursor -= gap * 1.4;
+  }
+  if (copy.lines.length > 0) {
+    const linesText = await textLayer(copy.lines.map((line) => `· ${line}`).join('\n'), font, Math.round(width * 0.04), contentWidth, '#f4f1ea', 500);
+    const meta = await sharp(linesText).metadata();
+    cursor -= Number(meta.height || 80);
+    composites.push({ input: linesText, top: Math.round(cursor), left: margin });
+    cursor -= gap;
+  }
+  if (copy.price) {
+    const priceText = await textLayer(copy.price, font, Math.round(width * 0.125 * revision.priceScale), Math.round(contentWidth * 0.62), accent, 800);
+    const priceMeta = await sharp(priceText).metadata();
+    const priceH = Number(priceMeta.height || 150);
+    const priceW = Number(priceMeta.width || 300);
+    cursor -= priceH;
+    composites.push({ input: priceText, top: Math.round(cursor), left: margin });
+    if (copy.qualifier) {
+      const qualText = await textLayer(copy.qualifier, font, Math.round(width * 0.036), Math.round(contentWidth * 0.4), '#ffffff', 700);
+      const qualMeta = await sharp(qualText).metadata();
+      const qualW = Number(qualMeta.width || 160) + 40;
+      const qualH = Number(qualMeta.height || 44) + 20;
+      const qualLeft = margin + priceW + 24;
+      if (qualLeft + qualW <= width - margin) {
+        const qualTop = cursor + priceH - qualH - Math.round(priceH * 0.2);
+        composites.push({ input: pill(qualW, qualH, '#ffffff', 0.2), top: Math.round(qualTop), left: qualLeft });
+        composites.push(await layer(qualText, qualLeft + 20, qualTop + 10));
+      }
+    }
+    cursor -= gap;
+  }
+  const titleText = await textLayer(title, font, Math.round(width * 0.074 * revision.titleScale), contentWidth, '#ffffff', 800);
+  const titleMeta = await sharp(titleText).metadata();
+  // With little copy the title sits in the lower third rather than on the very bottom edge.
+  const titleBottom = Math.min(cursor, Math.round(height * 0.8));
+  const titleTop = Math.max(Math.round(height * 0.2), Math.round(titleBottom - Number(titleMeta.height || 130)));
+  composites.push({ input: titleText, top: titleTop, left: margin });
+
+  return sharp(base).composite(composites).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
 function posterGenerationPrompt(job) {
-  const title = briefValue(job.brief, '主标题', job.project_name || '营销海报');
-  const facts = briefValue(job.brief, '核心卖点与准确事实', '');
-  const brand = briefValue(job.brief, '品牌', '');
-  return `Create a premium commercial advertising background image for ${brand}. Campaign theme: ${title}. Confirmed context: ${facts}. Photorealistic, polished studio lighting, natural anatomy, strong focal subject, vertical social-ad composition, clean negative space in the lower half for later typography. Do not render words, letters, numbers, prices, logos, watermarks, UI, QR codes, or captions.`;
+  return buildPosterPrompt({
+    purpose: briefValue(job.brief, '产品/服务', ''),
+    style: briefValue(job.brief, '风格', ''),
+    title: briefValue(job.brief, '主标题', job.project_name || ''),
+    brand: briefValue(job.brief, '品牌', ''),
+    facts: briefValue(job.brief, '核心卖点与准确事实', ''),
+    revision: parsePosterRevision(job.brief).text,
+  });
 }
 
 async function heartbeat(accessCode, jobId, stage, progress) {
