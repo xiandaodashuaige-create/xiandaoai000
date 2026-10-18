@@ -47,6 +47,22 @@ test('GPT image adapter sends the restored model contract and validates the imag
   assert.match(result.sha256, /^[a-f0-9]{64}$/);
 });
 
+test('GPT image model name is normalized for direct OpenAI and Gateway routes', async () => {
+  const fixture = await sharp({ create: { width: 1088, height: 1360, channels: 3, background: '#335544' } }).webp().toBuffer();
+  for (const scenario of [
+    { env: { OPENAI_API_KEY: 'direct', OPENAI_IMAGE_MODEL: 'openai/gpt-image-2' }, expected: 'gpt-image-2' },
+    { env: { VERCEL_OIDC_TOKEN: 'gateway', OPENAI_IMAGE_MODEL: 'gpt-image-2' }, expected: 'openai/gpt-image-2' },
+  ]) {
+    let body;
+    await generateOpenAiImage({
+      prompt: 'premium ad image',
+      env: { AI_MEDIA_GENERATION_ENABLED: 'true', ...scenario.env },
+      fetcher: async (_url, init) => { body = JSON.parse(init.body); return json({ data: [{ b64_json: fixture.toString('base64') }] }); },
+    });
+    assert.equal(body.model, scenario.expected);
+  }
+});
+
 test('GPT image adapter uses Vercel OIDC when a provider key cannot be exported', async () => {
   const fixture = await sharp({ create: { width: 1088, height: 1360, channels: 3, background: '#224f3d' } }).webp().toBuffer();
   let request;
@@ -65,11 +81,12 @@ test('Runway creates, polls and downloads a vertical clip', async () => {
   const calls = [];
   const result = await generateAiVideoClip({
     prompt: 'vertical beauty commercial', duration: 5,
+    referenceImage: { data: Buffer.alloc(2048, 3), type: 'image/jpeg' },
     env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'runway-key' },
     sleeper: async () => {}, maxWaitMs: 5000,
     fetcher: async (url, init = {}) => {
       calls.push({ url, init });
-      if (url.endsWith('/v1/text_to_video')) return json({ id: 'task-runway' });
+      if (url.endsWith('/v1/image_to_video')) return json({ id: 'task-runway' });
       if (url.endsWith('/v1/tasks/task-runway')) return json({ status: 'SUCCEEDED', output: ['https://cdn.example.com/runway.mp4'] });
       if (url === 'https://cdn.example.com/runway.mp4') return video();
       throw new Error(`unexpected ${url}`);
@@ -78,6 +95,7 @@ test('Runway creates, polls and downloads a vertical clip', async () => {
   const body = JSON.parse(calls[0].init.body);
   assert.equal(calls[0].init.headers['X-Runway-Version'], '2024-11-06');
   assert.equal(body.model, 'gen4.5');
+  assert.match(body.promptImage, /^data:image\/jpeg;base64,/);
   assert.equal(body.ratio, '768:1280');
   assert.equal(result.provider, 'runway');
   assert.equal(result.taskId, 'task-runway');
@@ -88,10 +106,11 @@ test('provider polling uses a bounded five-second default instead of hammering t
   const pauses = [];
   await generateAiVideoClip({
     prompt: 'vertical ad', maxWaitMs: 5000,
+    referenceImage: { data: Buffer.alloc(2048, 4), type: 'image/png' },
     env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'key' },
     sleeper: async (ms) => { pauses.push(ms); },
     fetcher: async (url) => {
-      if (url.endsWith('/text_to_video')) return json({ id: 'poll-task' });
+      if (url.endsWith('/image_to_video')) return json({ id: 'poll-task' });
       if (url.endsWith('/tasks/poll-task')) return ++polls === 1 ? json({ status: 'RUNNING' }) : json({ status: 'SUCCEEDED', output: ['https://cdn.example.com/poll.mp4'] });
       return video();
     },
@@ -103,6 +122,7 @@ test('Seedance creates, polls and downloads a vertical clip', async () => {
   const calls = [];
   const result = await generateAiVideoClip({
     prompt: 'vertical salon commercial', duration: 6,
+    referenceImage: { data: Buffer.alloc(2048, 5), type: 'image/webp' },
     env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'seedance', ARK_API_KEY: 'ark-key' },
     sleeper: async () => {}, maxWaitMs: 5000,
     fetcher: async (url, init = {}) => {
@@ -115,6 +135,9 @@ test('Seedance creates, polls and downloads a vertical clip', async () => {
   });
   const body = JSON.parse(calls[0].init.body);
   assert.equal(body.model, 'dreamina-seedance-2-5-260628');
+  assert.equal(body.omni_reference_task_type, 'reference');
+  assert.equal(body.content[1].role, 'reference_image');
+  assert.match(body.content[1].image_url.url, /^data:image\/webp;base64,/);
   assert.equal(body.ratio, '9:16');
   assert.equal(body.generate_audio, false);
   assert.equal(result.provider, 'seedance');
@@ -197,6 +220,20 @@ test('Gateway image-to-video model fails before spending when character referenc
   );
 });
 
+test('direct video providers fail before creating a paid task when character reference is absent', async () => {
+  for (const env of [
+    { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'key' },
+    { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'seedance', ARK_API_KEY: 'key' },
+  ]) {
+    let called = false;
+    await assert.rejects(
+      generateAiVideoClip({ prompt: 'vertical spokesperson ad', env, fetcher: async () => { called = true; return json({}); } }),
+      /ai_video_reference_required/,
+    );
+    assert.equal(called, false);
+  }
+});
+
 test('AI Hybrid sends the same character reference to hook and CTA gateway jobs', async () => {
   const workdir = await mkdtemp(path.join(tmpdir(), 'ai-video-reference-'));
   const referencePath = path.join(workdir, 'character.jpg');
@@ -248,27 +285,32 @@ test('AI Hybrid fails closed when only still-image generation is configured', as
 
 test('AI Hybrid records provider, model, task id and checksum for generated video clips', async () => {
   const workdir = await mkdtemp(path.join(tmpdir(), 'ai-video-assets-'));
+  const referencePath = path.join(workdir, 'character.jpg');
   let created = 0;
   try {
+    await sharp({ create: { width: 640, height: 960, channels: 3, background: '#806f66' } }).jpeg().toFile(referencePath);
     const result = await prepareAiHybridAssets({
       job: { workflow_mode: 'ai_hybrid', brief: '业务主题：香港美容院同区新客获取合作' },
-      downloadedInputs: [{ role: 'case_proof', type: 'video/mp4', localPath: '/tmp/proof.mp4' }],
       workdir,
       scenes: [{ title: 'Hook', seconds: 5 }, { title: 'CTA', seconds: 5 }],
       env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'test-key' },
+      downloadedInputs: [
+        { role: 'case_proof', type: 'video/mp4', localPath: '/tmp/proof.mp4' },
+        { role: 'character_reference', type: 'image/jpeg', localPath: referencePath },
+      ],
       sleeper: async () => {},
       fetcher: async (url) => {
-        if (url.endsWith('/v1/text_to_video')) return json({ id: `task-${++created}` });
+        if (url.endsWith('/v1/image_to_video')) return json({ id: `task-${++created}` });
         if (url.includes('/v1/tasks/task-')) return json({ status: 'SUCCEEDED', output: [`https://cdn.example.com/${url.split('/').at(-1)}.mp4`] });
         if (url.startsWith('https://cdn.example.com/')) return video();
         throw new Error(`unexpected ${url}`);
       },
     });
-    assert.deepEqual(result.inputs.map((item) => item.role), ['case_proof', 'ai_hook', 'ai_cta']);
+    assert.deepEqual(result.inputs.map((item) => item.role), ['case_proof', 'character_reference', 'ai_hook', 'ai_cta']);
     assert.deepEqual(result.generation.map((item) => item.provider), ['runway', 'runway']);
     assert.deepEqual(result.generation.map((item) => item.task_id), ['task-1', 'task-2']);
     assert.ok(result.generation.every((item) => /^[a-f0-9]{64}$/.test(item.sha256)));
-    assert.ok((await readFile(result.inputs[1].localPath)).length > 1000);
+    assert.ok((await readFile(result.inputs[2].localPath)).length > 1000);
   } finally { await rm(workdir, { recursive: true, force: true }); }
 });
 
@@ -286,8 +328,8 @@ test('AI Hybrid never pretends uploaded remix footage was generated', async () =
 test('provider downloads reject local and private-network URLs', async () => {
   await assert.rejects(
     generateAiVideoClip({
-      prompt: 'x', env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'key' }, sleeper: async () => {}, maxWaitMs: 5000,
-      fetcher: async (url) => url.endsWith('/text_to_video') ? json({ id: 'unsafe' }) : url.endsWith('/tasks/unsafe') ? json({ status: 'SUCCEEDED', output: ['https://127.0.0.1/private.mp4'] }) : video(),
+      prompt: 'x', referenceImage: { data: Buffer.alloc(2048, 6), type: 'image/jpeg' }, env: { AI_MEDIA_GENERATION_ENABLED: 'true', AI_VIDEO_PROVIDER: 'runway', RUNWAYML_API_SECRET: 'key' }, sleeper: async () => {}, maxWaitMs: 5000,
+      fetcher: async (url) => url.endsWith('/image_to_video') ? json({ id: 'unsafe' }) : url.endsWith('/tasks/unsafe') ? json({ status: 'SUCCEEDED', output: ['https://127.0.0.1/private.mp4'] }) : video(),
     }),
     /provider_output_unsafe_url/,
   );
