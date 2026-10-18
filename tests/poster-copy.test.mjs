@@ -57,7 +57,7 @@ test('revision: bigger title, colour change and passthrough text', () => {
 
 test('revision: no marker means no change', () => {
   const parsed = parsePosterRevision('主标题：七夕');
-  assert.deepEqual(parsed, { text: '', titleScale: 1, priceScale: 1, accent: null });
+  assert.deepEqual(parsed, { text: '', background: '', titleScale: 1, priceScale: 1, accent: null });
 });
 
 test('revision text reaches the background prompt', () => {
@@ -87,4 +87,15 @@ test('stories keep the top 14% and bottom 20% free', () => {
 
 test('story prompt asks the model to keep the UI zones clear', () => {
   assert.match(buildPosterPrompt({ purpose: 'x', placement: 'story' }), /top 14 percent/);
+});
+
+test('image prompt never carries prices or digits, and layout-only revisions stay out of it', () => {
+  const prompt = buildPosterPrompt({ purpose: '做一张海报，体验价 RM88', title: '七夕限定 美甲 8 折', brand: 'Rose Nails', facts: 'RM88 首次体验 · 60 分钟', style: '简洁' });
+  assert.ok(!/\d/.test(prompt.replace(/\b(?:9:16|1:1)\b|\d+ percent/g, '')), prompt);
+  assert.ok(!prompt.includes('RM'));
+  const layoutOnly = parsePosterRevision('x\n\n【基于上一版继续优化】\n价格再大一点，按钮改成金色');
+  assert.equal(layoutOnly.background, '');
+  assert.equal(layoutOnly.priceScale, 1.25);
+  const mixed = parsePosterRevision('x\n\n【基于上一版继续优化】\n标题大一点，背景换成粉色花瓣');
+  assert.equal(mixed.background, '背景换成粉色花瓣');
 });

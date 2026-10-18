@@ -45,14 +45,16 @@ export function styleHint(style) {
  * occasion, the style) steer the scene; the model is told to draw a real
  * service moment rather than an empty room, and to draw no lettering. */
 export function buildPosterPrompt({ purpose, style, title, brand, facts, revision, placement = 'feed' }) {
-  const context = [purpose, title].filter(Boolean).join(' / ');
+  // The image model must never see prices or other numbers: given "RM88" it
+  // paints a ghost "88" into the picture. Text is added later by the renderer.
+  const noDigits = (value) => String(value || '').replace(/(?:rm|hk\$|s\$|usd|hkd|sgd|\$)?\s*[0-9０-９][0-9０-９.,]*\s*(?:元|令吉|港币|新币|折|%|％|rm|hkd|sgd|usd)?/giu, ' ').replace(/\s{2,}/g, ' ').trim();
+  const context = [purpose, title].map(noDigits).filter(Boolean).join(' / ');
   return [
     `Create a premium vertical advertising photograph for a local beauty / lifestyle business${brand ? ` named "${brand}"` : ''}.`,
     context ? `The business and campaign, in the customer's words: ${context}.` : '',
-    facts ? `Offer context (do not draw it as text): ${facts}.` : '',
     `Mood and style: ${styleHint(style)}${style ? ` (customer asked for: ${style})` : ''}.`,
     'Show a real, believable moment of the service or product being enjoyed - a relaxed client with hands, product or result clearly visible, natural anatomy, warm professional lighting, one strong focal subject.',
-    revision ? `The customer asked for this change to the previous version - follow it: ${revision}.` : '',
+    noDigits(revision) ? `The customer asked for this change to the previous version - follow it: ${noDigits(revision)}.` : '',
     placement === 'story' ? 'Vertical 9:16 Stories/Reels frame: keep the top 14 percent and bottom 22 percent free of faces and key subject.' : '',
     placement === 'square' ? 'Square 1:1 frame: centre the focal subject with calm space for text at the bottom.' : '',
     'Compose for a social-media ad: keep the lower 40 percent calm and darker so overlaid typography stays legible, and keep faces out of the lower third.',
@@ -115,7 +117,7 @@ const COLOR_WORDS = [
 export function parsePosterRevision(brief) {
   const parts = String(brief || '').split(REVISION_MARKER).slice(1).map((part) => part.trim()).filter(Boolean);
   const text = parts.join('；').slice(0, 300);
-  const options = { text, titleScale: 1, priceScale: 1, accent: null };
+  const options = { text, background: text, titleScale: 1, priceScale: 1, accent: null };
   if (!text) return options;
   if (/标题/u.test(text)) {
     if (/大|醒目|突出|放大|粗/u.test(text)) options.titleScale = 1.3;
@@ -126,6 +128,13 @@ export function parsePosterRevision(brief) {
     const hit = COLOR_WORDS.find(([pattern]) => pattern.test(text));
     if (hit) options.accent = hit[1];
   }
+  // Clauses about type size, price size or button colour are applied by the
+  // renderer; sending them to the image model makes it paint the text itself.
+  options.background = text
+    .split(/[，,；;。.、]/u)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause && !/标题|价格|价钱|金额|按钮|配色|主色|颜色|色调/u.test(clause))
+    .join('，');
   return options;
 }
 

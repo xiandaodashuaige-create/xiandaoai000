@@ -220,7 +220,7 @@ function posterGenerationPrompt(job) {
     title: briefValue(job.brief, '主标题', job.project_name || ''),
     brand: briefValue(job.brief, '品牌', ''),
     facts: briefValue(job.brief, '核心卖点与准确事实', ''),
-    revision: parsePosterRevision(job.brief).text,
+    revision: parsePosterRevision(job.brief).background,
     placement: posterPlacement(job.brief).key,
   });
 }
