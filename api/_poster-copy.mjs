@@ -44,7 +44,7 @@ export function styleHint(style) {
 /** Background prompt. The customer's own words (what the business is, the
  * occasion, the style) steer the scene; the model is told to draw a real
  * service moment rather than an empty room, and to draw no lettering. */
-export function buildPosterPrompt({ purpose, style, title, brand, facts }) {
+export function buildPosterPrompt({ purpose, style, title, brand, facts, revision }) {
   const context = [purpose, title].filter(Boolean).join(' / ');
   return [
     `Create a premium vertical advertising photograph for a local beauty / lifestyle business${brand ? ` named "${brand}"` : ''}.`,
@@ -52,6 +52,7 @@ export function buildPosterPrompt({ purpose, style, title, brand, facts }) {
     facts ? `Offer context (do not draw it as text): ${facts}.` : '',
     `Mood and style: ${styleHint(style)}${style ? ` (customer asked for: ${style})` : ''}.`,
     'Show a real, believable moment of the service or product being enjoyed - a relaxed client with hands, product or result clearly visible, natural anatomy, warm professional lighting, one strong focal subject.',
+    revision ? `The customer asked for this change to the previous version - follow it: ${revision}.` : '',
     'Compose for a social-media ad: keep the lower 40 percent calm and darker so overlaid typography stays legible, and keep faces out of the lower third.',
     'Absolutely no words, letters, numbers, prices, logos, watermarks, UI, QR codes or captions anywhere in the image.',
   ].filter(Boolean).join(' ');
@@ -97,4 +98,31 @@ export function accentFromDominant({ r, g, b }) {
   const rgb = hslToRgb(h, Math.max(0.5, Math.min(0.85, s)), Math.max(0.58, Math.min(0.72, l)));
   const luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
   return { accent: hex(rgb), onAccent: luminance > 0.5 ? '#1a1410' : '#ffffff' };
+}
+
+const REVISION_MARKER = '【基于上一版继续优化】';
+const COLOR_WORDS = [
+  [/粉/u, '#e87aa0'], [/红/u, '#e5483f'], [/金|黄/u, '#e8b83a'], [/橙/u, '#f08a3c'],
+  [/绿/u, '#3fbf7f'], [/蓝/u, '#4a8fe8'], [/紫/u, '#9a6be0'], [/白/u, '#f3f3f3'],
+];
+
+/** Reads the customer's revision requests that the platform appends to the
+ * brief, and turns the layout-related ones into deterministic render options.
+ * Anything it does not recognise is still passed on to the background prompt
+ * (`text`), so the request is never silently dropped. */
+export function parsePosterRevision(brief) {
+  const parts = String(brief || '').split(REVISION_MARKER).slice(1).map((part) => part.trim()).filter(Boolean);
+  const text = parts.join('；').slice(0, 300);
+  const options = { text, titleScale: 1, priceScale: 1, accent: null };
+  if (!text) return options;
+  if (/标题/u.test(text)) {
+    if (/大|醒目|突出|放大|粗/u.test(text)) options.titleScale = 1.3;
+    else if (/小|缩小|细/u.test(text)) options.titleScale = 0.85;
+  }
+  if (/价格|价钱|金额/u.test(text) && /大|醒目|突出|放大/u.test(text)) options.priceScale = 1.25;
+  if (/按钮|配色|主色|颜色|色调/u.test(text)) {
+    const hit = COLOR_WORDS.find(([pattern]) => pattern.test(text));
+    if (hit) options.accent = hit[1];
+  }
+  return options;
 }

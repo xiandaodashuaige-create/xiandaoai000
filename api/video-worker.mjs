@@ -7,7 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
-import { accentFromDominant, buildPosterPrompt, parsePosterFacts } from './_poster-copy.mjs';
+import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision } from './_poster-copy.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -123,6 +123,11 @@ async function textLayer(text, fontFile, size, width, color = '#ffffff', weight 
   }).png().toBuffer();
 }
 
+function hexToRgb(value) {
+  const n = parseInt(value.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
 export async function renderPoster(job, input) {
   const font = await ensureFont();
   const brief = String(job.brief || '');
@@ -136,9 +141,12 @@ export async function renderPoster(job, input) {
   const cta = briefValue(brief, '行动引导', '');
   const brand = briefValue(brief, '品牌', briefValue(brief, '客户', 'LULIAN AI'));
   const copy = parsePosterFacts(facts);
+  const revision = parsePosterRevision(brief);
 
   const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.95, saturation: 1.02 }).toBuffer();
-  const { accent, onAccent } = accentFromDominant((await sharp(base).stats()).dominant);
+  const picked = accentFromDominant((await sharp(base).stats()).dominant);
+  const accent = revision.accent || picked.accent;
+  const onAccent = revision.accent ? accentFromDominant(hexToRgb(revision.accent)).onAccent : picked.onAccent;
   const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050505" stop-opacity=".16"/><stop offset=".34" stop-color="#050505" stop-opacity=".10"/><stop offset=".62" stop-color="#050505" stop-opacity=".58"/><stop offset="1" stop-color="#050505" stop-opacity=".9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
   const pill = (w, h, fill, opacity = 1) => Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="${h / 2}" fill="${fill}" fill-opacity="${opacity}"/></svg>`);
   const layer = async (input_, left, top) => ({ input: await input_, left: Math.round(left), top: Math.round(top) });
@@ -175,7 +183,7 @@ export async function renderPoster(job, input) {
     cursor -= gap;
   }
   if (copy.price) {
-    const priceText = await textLayer(copy.price, font, Math.round(width * 0.125), Math.round(contentWidth * 0.62), accent, 800);
+    const priceText = await textLayer(copy.price, font, Math.round(width * 0.125 * revision.priceScale), Math.round(contentWidth * 0.62), accent, 800);
     const priceMeta = await sharp(priceText).metadata();
     const priceH = Number(priceMeta.height || 150);
     const priceW = Number(priceMeta.width || 300);
@@ -195,7 +203,7 @@ export async function renderPoster(job, input) {
     }
     cursor -= gap;
   }
-  const titleText = await textLayer(title, font, Math.round(width * 0.074), contentWidth, '#ffffff', 800);
+  const titleText = await textLayer(title, font, Math.round(width * 0.074 * revision.titleScale), contentWidth, '#ffffff', 800);
   const titleMeta = await sharp(titleText).metadata();
   // With little copy the title sits in the lower third rather than on the very bottom edge.
   const titleBottom = Math.min(cursor, Math.round(height * 0.8));
@@ -212,6 +220,7 @@ function posterGenerationPrompt(job) {
     title: briefValue(job.brief, '主标题', job.project_name || ''),
     brand: briefValue(job.brief, '品牌', ''),
     facts: briefValue(job.brief, '核心卖点与准确事实', ''),
+    revision: parsePosterRevision(job.brief).text,
   });
 }
 
