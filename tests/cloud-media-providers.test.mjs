@@ -357,3 +357,16 @@ test('capability endpoint separates installed adapters from configured providers
   assert.match(worker, /AI 视频生成失败，未回退到普通素材混剪/);
   assert.match(worker, /mode: 'ai_hybrid_gateway_reference'/);
 });
+
+// Guards against vendor/provider-name disclosure: the GET capability
+// endpoint has no auth on it by design (health checks hit it without a
+// token), so it must never hand an unauthenticated caller the installed
+// provider_adapters/providers detail -- only an authorised caller (the
+// same x-video-access check POST already enforces) gets that payload.
+test('unauthenticated GET does not disclose provider_adapters/providers; authorised GET does', async () => {
+  const worker = await readFile(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
+  const getBlock = worker.match(/if \(req\.method === 'GET'\) \{[\s\S]*?\n {2}\}/)?.[0];
+  assert.ok(getBlock, 'expected a GET branch guarded by its own block');
+  assert.match(getBlock, /if \(!authorised\(req\)\) return res\.status\(200\)\.json\(\{ ok: true, worker: WORKER \}\);/);
+  assert.match(getBlock, /provider_adapters:/);
+});

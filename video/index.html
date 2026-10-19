@@ -302,7 +302,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
       <div class="fieldbox"><label for="posterLanguage">语言</label><select id="posterLanguage"><option>跟随项目默认语言</option><option>简体中文</option><option>繁体中文</option><option>English</option></select></div>
     </div>
     <div class="uploadgrid">
-      <label class="uploadbox"><b>主视觉图片（可选）</b><small>上传则使用你的产品、人物或门店画面；不上传时由 GPT 生成主视觉，再自动排版。</small><input id="posterMainFiles" type="file" accept="image/*,video/*"></label>
+      <label class="uploadbox"><b>主视觉图片（可选）</b><small>上传则使用你的产品、人物或门店画面；不上传时由 AI 自动生成主视觉，再自动排版。</small><input id="posterMainFiles" type="file" accept="image/*,video/*"></label>
       <label class="uploadbox"><b>参考海报 / Logo（可选）</b><small>参考只学习排版与风格；Logo 和品牌素材会独立上传。</small><input id="posterRefFiles" type="file" accept="image/*" multiple></label>
     </div>
     <div class="guardrail"><span>✓</span><div><b>项目隔离与检验规则自动生效</b><small>不会把美睫、按摩、美白、培训等不同项目的文案、价格或图片混在一起；后续修改会写入当前项目记忆。</small></div></div>
@@ -706,7 +706,7 @@ $('posterSubmitBtn').onclick=async()=>{
     const init=await api('init_job',{video_project_id:currentProject.id,workflow_mode:'image_poster',project_name:'广告海报 · '+title.slice(0,18),brief,output_count:1});
     const files=[...main.map(file=>({role:'main',file})),...[...$('posterRefFiles').files].map(file=>({role:'reference',file}))],meta=[];
     for(let i=0;i<files.length;i++)meta.push(await uploadOne(init.job.id,files[i].file,i,files.length,files[i].role,'poster'));
-    setPosterStatus(main.length?'图片已上传，正在排版与检验…':'任务已提交，云端将用 GPT 生成主视觉…',93);
+    setPosterStatus(main.length?'图片已上传，正在排版与检验…':'任务已提交，云端将用 AI 自动生成主视觉…',93);
     await api('submit_job',{job_id:init.job.id,input_files:meta});
     recordEvent('submit','',{workflow_mode:'image_poster',language,size:$('posterSize').value},init.job.id);
     setPosterStatus('海报任务已提交，可在历史任务查看进度',100);
