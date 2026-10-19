@@ -321,7 +321,10 @@ async function runOne(accessCode, mediaEnv = process.env) {
 export default async function handler(req, res) {
   const oidcToken = String(req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN || '');
   const mediaEnv = oidcToken ? { ...process.env, VERCEL_OIDC_TOKEN: oidcToken } : process.env;
-  if (req.method === 'GET') return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway_image', 'vercel_ai_gateway_video', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'ai_hybrid_gateway_reference' });
+  if (req.method === 'GET') {
+    if (!authorised(req)) return res.status(200).json({ ok: true, worker: WORKER });
+    return res.status(200).json({ ok: true, worker: WORKER, capability: ['image_poster', 'remix', 'ai_hybrid', 'voiceover_mix', 'bgm_mix'], provider_adapters: ['openai_image', 'vercel_ai_gateway_image', 'vercel_ai_gateway_video', 'seedance', 'runway'], providers: mediaProviderCapabilities(mediaEnv), mode: 'ai_hybrid_gateway_reference' });
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
     if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });
