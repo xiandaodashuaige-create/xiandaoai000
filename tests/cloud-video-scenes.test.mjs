@@ -63,3 +63,12 @@ test('unknown topics without structured project fields keep the existing fallbac
   assert.equal(scenes.length, 5);
   assert.ok(scenes.every((scene) => scene.vo));
 });
+
+test('current online-course facts override the stored price and in-person course description', () => {
+  const scenes = copyFor({ brief: '项目：AI入门课程\n业务类型：培训\n业务说明：3小时线下实操\n准确价格/优惠/事实：RM49\n✅ 海报设计\n✅ 视频实操\n✅ 现场练习\n行动引导：WhatsApp报名\n语言：普通话\n【本次制作需求】\n准确事实：RM99，2小时线上录播理论课程\n✅ AI基础\n✅ 安全知识\n✅ 使用原理\n客户行动：WhatsApp了解课程\n语言声音：普通话' });
+  const output = JSON.stringify(scenes);
+  assert.match(output, /RM99/);
+  assert.match(output, /2小时/);
+  assert.match(scenes[2].vo, /AI基础、安全知识、使用原理/);
+  assert.doesNotMatch(output, /RM49|3小时|线下|实操|现场|海报设计/);
+});
