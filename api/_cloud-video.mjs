@@ -3,7 +3,7 @@ import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob, createGatewaySynthesizer, gatewaySpeechConfigured } from './_cloud-tts.mjs';
-import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
+import { englishStoryboard, industryStoryboard, inferIntent } from './_cloud-industry.mjs';
 import sharp from 'sharp';
 import { prepareAiHybridAssets } from './_cloud-media-providers.mjs';
 import { planRemix } from './_cloud-remix.mjs';
@@ -73,13 +73,51 @@ function briefBlock(brief, pattern) {
   return value.split(/\s+(?=\d+\.\s*AI生成)/)[0].trim();
 }
 
+// Unknown businesses must use their own project facts rather than the legacy
+// Cantonese treatment template. Keep known industry storyboards unchanged.
+function contextualStoryboard(job, scenes, brief) {
+  if (isEnglishJob(job) || inferIntent(job) !== 'generic_service') return scenes;
+  const project = brief.split('【本次制作需求】')[0];
+  const field = (text, labels) => text.match(new RegExp(`^(?:${labels})[：:]\\s*([^\\n]+)`, 'm'))?.[1]?.trim() || '';
+  const topic = field(project, '项目|項目') || field(brief, '业务主题|業務主題|业务类型|業務類型');
+  if (!topic) return scenes;
+  const facts = project.match(/^准确价格\/优惠\/事实[：:]([\s\S]*?)(?=^行动引导[：:]|^语言[：:]|(?![\s\S]))/m)?.[1] || '';
+  const description = project.match(/^业务说明[：:]([\s\S]*?)(?=^目标客户[：:]|^准确价格|(?![\s\S]))/m)?.[1] || '';
+  const price = (facts + '\n' + description).match(/(?:RM|HK\$|S\$|SGD|USD|RMB|¥|\$)\s*\d+(?:[.,]\d+)?/i)?.[0] || '';
+  const action = field(brief.split('【本次制作需求】').at(-1), '客户行动|客戶行動') || field(project, '行动引导|行動引導');
+  const validAction = action && !/^(未填写|未填寫|无|無)$/.test(action) ? action : '';
+  const mandarin = voiceFor(job).language === 'zh-CN';
+  const training = /培训|培訓|课程|課程|实战课|實戰課/.test(topic + field(brief, '业务主题|業務主題|业务类型|業務類型'));
+  const duration = (facts + '\n' + description).match(/\d+(?:\.\d+)?\s*(?:小时|小時)/)?.[0];
+  const points = [...(facts + '\n' + description).matchAll(/✅\s*([^\n✅]+)/g)].map((m) => m[1].trim()).slice(0, 3);
+  const title = topic.slice(0, 36);
+  const hook = training
+    ? `${duration || '现场'}实操\n${title}`
+    : `${title}\n${mandarin ? '先了解，再决定' : '先了解，再決定'}`;
+  const hookVo = training
+    ? `想了解${topic}？${duration ? duration + '线下实操，' : ''}先看看现场内容，再决定是否报名。`
+    : mandarin ? `想了解${topic}？先看看真实内容，再决定。` : `想了解${topic}？先睇下實際內容，再決定。`;
+  const cards = training && points.length === 3 ? points : mandarin ? ['了解项目内容', '查看真实过程', 'WhatsApp了解详情'] : ['了解項目內容', '睇實際過程', 'WhatsApp了解詳情'];
+  const middleVo = training && points.length ? `现场内容包括${points.join('、')}。` : mandarin ? `这里展示${topic}的真实资料，你可以先了解实际内容。` : `呢度係${topic}嘅實際資料，你可以先了解清楚內容。`;
+  const cta = validAction || (training ? 'WhatsApp了解报名' : mandarin ? 'WhatsApp了解详情' : 'WhatsApp了解詳情');
+  return scenes.map((scene, i) => ({ ...scene, ...[
+    { kicker: mandarin ? '先看这里' : '先睇呢度', title: hook, subtitle: hookVo, vo: hookVo },
+    { kicker: mandarin ? '项目内容' : '項目內容', cards, vo: cards.join('、') + '。' },
+    { kicker: mandarin ? '真实资料' : '實際資料', title, subtitle: middleVo, vo: middleVo },
+    { messages: [`你好，想了解${title}`, cta], subtitle: cta, vo: cta },
+    { kicker: mandarin ? '了解详情' : '了解詳情', title: [title, price].filter(Boolean).join('\n'), button: cta, subtitle: cta, vo: [price, cta].filter(Boolean).join('，') },
+  ][i] }));
+}
+
 export function copyFor(job) {
   const brief = String(job.brief || '').replaceAll('\\n', '\n');
-  const scenes = isEnglishJob(job) ? englishStoryboard(job) : industryStoryboard(job);
+  const scenes = contextualStoryboard(job, isEnglishJob(job) ? englishStoryboard(job) : industryStoryboard(job), brief);
   const hook = briefBlock(brief, /1\. AI生成开头 Hook[：:]([^\n]+)/);
   const cta = briefBlock(brief, /3\. AI生成结尾 CTA[：:]([^\n]+)/);
-  if (hook) scenes[0] = { ...scenes[0], title: hook };
-  if (cta) scenes[scenes.length - 1] = { ...scenes[scenes.length - 1], title: cta };
+  // UI structure instructions are not customer-facing advertising copy.
+  const instruction = /由系统|由系統|根据准确|根據準確|前三秒必须|前三秒必須|最后一秒|最後一秒|生成清晰行动引导|生成清晰行動引導/;
+  if (hook && !instruction.test(hook)) scenes[0] = { ...scenes[0], title: hook, subtitle: hook, vo: hook };
+  if (cta && !instruction.test(cta)) scenes[scenes.length - 1] = { ...scenes.at(-1), title: cta, subtitle: cta, vo: cta };
   return scenes;
 }
 
