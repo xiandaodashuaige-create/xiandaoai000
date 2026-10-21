@@ -118,3 +118,16 @@ test('current request language overrides the stored project default',()=>{
   assert.equal(voiceFor({brief}).language,'zh-CN');
   assert.equal(voiceFor({brief:brief.replace('马来西亚华语','English')}).language,'en-US');
 });
+
+test('male and alternate voice revisions select distinct supported speakers',async()=>{
+  const { createGatewaySynthesizer }=await import('../api/_cloud-tts.mjs');
+  const male=voiceFor({brief:'语言：普通话',revision_scope:'voice',revision_prompt:'改成男声'});
+  assert.equal(male.voice,'zh-CN-YunxiNeural');
+  const alternate=voiceFor({brief:'语言：香港粤语',revision_scope:'voice',revision_prompt:'換個聲音'});
+  assert.equal(alternate.voice,'zh-HK-HiuGaaiNeural');
+  assert.equal(voiceFor({brief:'语言：香港粤语',revision_scope:'voice',revision_prompt:'改成普通话'}).language,'zh-CN');
+  const requests=[];
+  const synth=createGatewaySynthesizer({env:{AI_MEDIA_GENERATION_ENABLED:'true',VERCEL_OIDC_TOKEN:'fixture'},gatewayFactory:()=>({speechModel:id=>({id})}),speechGenerator:async options=>{requests.push(options);return {audio:{uint8Array:new Uint8Array(2048)}};}});
+  await synth({text:'测试',...male}); await synth({text:'測試',...alternate});
+  assert.equal(requests[0].voice,'Charon'); assert.equal(requests[1].voice,'Aoede');
+});
