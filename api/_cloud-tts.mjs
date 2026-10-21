@@ -17,9 +17,12 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 // Same voice and rate rules as the local worker, including the male/female
 // Cantonese switch requested through the revision prompt.
 export function voiceFor(job) {
-  const { english, voice, rate } = voiceRulesFor(job);
-  const mandarin = !english && /普通话|普通話|华语|華語|Mandarin|zh-CN/i.test(String(job?.brief || '')) && !/香港粤语|香港粵語|Cantonese/i.test(String(job?.brief || ''));
-  return { voice: mandarin ? 'zh-CN-XiaoxiaoNeural' : voice, rate, language: english ? 'en-US' : mandarin ? 'zh-CN' : 'zh-HK' };
+  const rules = voiceRulesFor(job);
+  const request = String(job?.brief || '').replaceAll('\\n', '\n').split('【本次制作需求】').at(-1);
+  const declared = [...request.matchAll(/^(?:语言声音|语言|語言|Language)[：:]\s*([^\n]+)/gm)].at(-1)?.[1] || job?.language || job?.locale || '';
+  const english = declared ? /English|^en(?:-|$)/i.test(declared) : rules.english;
+  const mandarin = !english && /普通话|普通話|华语|華語|Mandarin|zh-CN/i.test(declared);
+  return { voice: english ? 'en-US-JennyNeural' : mandarin ? 'zh-CN-XiaoxiaoNeural' : rules.voice, rate: rules.rate, language: english ? 'en-US' : mandarin ? 'zh-CN' : 'zh-HK' };
 }
 
 export function gatewaySpeechConfigured(env = process.env) {
