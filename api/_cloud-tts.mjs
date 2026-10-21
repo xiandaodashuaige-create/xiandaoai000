@@ -1,5 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import { experimental_generateSpeech as generateSpeech } from 'ai';
+import { createGateway } from '@ai-sdk/gateway';
 import { isEnglishJob, voiceRulesFor } from './_cloud-industry.mjs';
 
 export { isEnglishJob };
@@ -16,7 +18,29 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 // Cantonese switch requested through the revision prompt.
 export function voiceFor(job) {
   const { english, voice, rate } = voiceRulesFor(job);
-  return { voice, rate, language: english ? 'en-US' : 'zh-HK' };
+  const mandarin = !english && /普通话|普通話|华语|華語|Mandarin|zh-CN/i.test(String(job?.brief || '')) && !/香港粤语|香港粵語|Cantonese/i.test(String(job?.brief || ''));
+  return { voice: mandarin ? 'zh-CN-XiaoxiaoNeural' : voice, rate, language: english ? 'en-US' : mandarin ? 'zh-CN' : 'zh-HK' };
+}
+
+export function gatewaySpeechConfigured(env = process.env) {
+  return String(env.AI_MEDIA_GENERATION_ENABLED).toLowerCase() === 'true' && Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
+}
+
+export function createGatewaySynthesizer({ env = process.env, fetcher = fetch, speechGenerator = generateSpeech, gatewayFactory = createGateway } = {}) {
+  return async ({ text, voice, rate }) => {
+    if (!gatewaySpeechConfigured(env)) throw new Error('cloud_tts_not_configured');
+    const token = env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN;
+    const gateway = gatewayFactory({ apiKey: token, fetch: fetcher, ...(!env.AI_GATEWAY_API_KEY ? { headers: { 'ai-gateway-auth-method': 'oidc' } } : {}) });
+    const language = voice.startsWith('en-') ? 'natural English' : voice.startsWith('zh-CN') ? 'natural Mandarin Chinese' : 'natural Hong Kong Cantonese, not Mandarin';
+    const result = await speechGenerator({
+      model: gateway.speechModel(env.AI_GATEWAY_TTS_MODEL || 'google/gemini-3.8-flash-tts'),
+      text, voice: /WanLung/.test(voice) ? 'Charon' : 'Kore', outputFormat: 'wav',
+      instructions: `Read only the provided text in ${language}. One consistent adult speaker, warm and clear commercial delivery, conversational rhythm, no music or sound effects.`,
+      speed: 1 + (Number.parseFloat(rate) || 0) / 100,
+      maxRetries: 0, abortSignal: AbortSignal.timeout(55_000),
+    });
+    return Buffer.from(result.audio.uint8Array);
+  };
 }
 
 // Scene copy is joined into one short narration. Characters that could
