@@ -33,9 +33,15 @@ begin
   select item into existing from jsonb_array_elements(coalesce(v.input_files,'[]'::jsonb)) as item where item->>'role'=asset_role limit 1;
   if existing is not null then
     if existing->>'path'=asset_path then return v; end if;
-    raise exception 'checkpoint_role_already_exists';
+    -- A real revision inherits old generated shots. Replace an inherited shot
+    -- only, never a checkpoint already written by this job or an uploaded asset.
+    if existing->'generation' is null or existing->>'path' like 'jobs/'||p_job_id::text||'/%' then
+      raise exception 'checkpoint_role_already_exists';
+    end if;
   end if;
-  update public.video_agent_jobs set input_files=coalesce(input_files,'[]'::jsonb)||jsonb_build_array(p_asset), updated_at=now()
+  update public.video_agent_jobs set input_files=coalesce((
+      select jsonb_agg(item) from jsonb_array_elements(coalesce(input_files,'[]'::jsonb)) as item where item->>'role' is distinct from asset_role
+    ),'[]'::jsonb)||jsonb_build_array(p_asset), updated_at=now()
     where id=p_job_id returning * into v;
   return v;
 end
