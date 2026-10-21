@@ -372,6 +372,10 @@ export async function prepareCharacterReference({ job, downloadedInputs, workdir
 
 export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, onAsset = async () => {}, imageGenerator = generateOpenAiImage, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
+  const briefSha256 = sha256(Buffer.from(String(job.brief || '')));
+  // A retry keeps the same brief. A requested revision must not silently reuse
+  // shots generated for the previous copy, pacing or scene direction.
+  downloadedInputs = downloadedInputs.filter((item) => !['ai_hook', 'ai_cta'].includes(item.role) || !item.generation || item.generation.brief_sha256 === briefSha256);
   const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook');
   const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta');
   const missing = [
@@ -393,7 +397,7 @@ export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, wor
     const result = await generateAiVideoClip({ prompt, negativePrompt, duration: item.scene?.seconds || 5, referenceImage, idempotencyKey, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS, videoGenerator, gatewayFactory });
     const localPath = path.join(workdir, `${item.role}-${index}${result.type === 'video/webm' ? '.webm' : '.mp4'}`);
     await writeFile(localPath, result.data);
-    const meta = { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, character_reference_used: true, duration_seconds: item.scene?.seconds || 5, billing_route: result.provider === 'vercel-ai-gateway' ? 'gateway' : 'direct' };
+    const meta = { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, brief_sha256: briefSha256, character_reference_used: true, duration_seconds: item.scene?.seconds || 5, billing_route: result.provider === 'vercel-ai-gateway' ? 'gateway' : 'direct' };
     const input = { role: item.role, type: result.type, name: path.basename(localPath), localPath, generation: meta };
     await onAsset(input);
     return { input, meta };
