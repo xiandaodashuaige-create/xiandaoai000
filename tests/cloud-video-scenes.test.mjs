@@ -44,6 +44,8 @@ test('training uses its own verified topic, benefits, price and action, never tr
   assert.match(output, /RM49/);
   assert.match(scenes[2].vo, /AI文案创作、AI商业海报、AI短视频作品/);
   assert.match(scenes.at(-1).vo, /点击WhatsApp了解报名/);
+  assert.equal(scenes.at(-1).button, 'WhatsApp 报名');
+  assert.equal(scenes[1].positiveCards, true);
   assert.doesNotMatch(output, /療程|疗程|預約到店|由系统|根据准确|前三秒必须|最后一秒|鹿聯/);
 });
 
