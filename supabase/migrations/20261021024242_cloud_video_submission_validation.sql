@@ -25,6 +25,11 @@ begin
   if v.status in ('queued','processing','completed') then return v; end if;
   if v.status not in ('draft','uploading') then raise exception 'job_not_uploading'; end if;
   if p_input_files is null or jsonb_typeof(p_input_files)<>'array' then raise exception 'invalid_input_files'; end if;
+  if exists(
+    select 1 from jsonb_array_elements(p_input_files) f
+    where coalesce(f->>'path','') not like 'jobs/'||p_job_id::text||'/%'
+      or not exists(select 1 from storage.objects o where o.bucket_id='video-agent-inputs' and o.name=f->>'path')
+  ) then raise exception 'input_asset_not_owned_by_job'; end if;
   if v.workflow_mode='remix' and not exists(
     select 1 from jsonb_array_elements(p_input_files) f
     where coalesce(f->>'type','') ~ '^(video|image)/'
