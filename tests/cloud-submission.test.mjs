@@ -27,3 +27,11 @@ test('website blocks an empty remix before creating or uploading a job', async (
   assert.match(submit,/selected\.some\(file=>\/\^\(video\|image\)\\\//);
   assert.ok(submit.indexOf('selected.some')<submit.indexOf("api('init_job'"));
 });
+
+test('cloud remix renders every requested version with its own seed', async () => {
+  const { renderVideoVersions }=await import('../api/video-worker.mjs');
+  const ids=[];
+  const out=await renderVideoVersions({id:'job',workflow_mode:'remix',output_count:3},[],async()=>{},{},async(job)=>{ids.push(job.id);return {data:Buffer.from(job.id)};});
+  assert.equal(out.length,3); assert.equal(new Set(ids).size,3);
+  assert.equal(new Set(out.map(x=>x.data.toString())).size,3);
+});
