@@ -83,22 +83,28 @@ function contextualStoryboard(job, scenes, brief) {
   if (!topic) return scenes;
   const facts = project.match(/^准确价格\/优惠\/事实[：:]([\s\S]*?)(?=^行动引导[：:]|^语言[：:]|(?![\s\S]))/m)?.[1] || '';
   const description = project.match(/^业务说明[：:]([\s\S]*?)(?=^目标客户[：:]|^准确价格|(?![\s\S]))/m)?.[1] || '';
-  const price = (facts + '\n' + description).match(/(?:RM|HK\$|S\$|SGD|USD|RMB|¥|\$)\s*\d+(?:[.,]\d+)?/i)?.[0] || '';
-  const action = field(brief.split('【本次制作需求】').at(-1), '客户行动|客戶行動') || field(project, '行动引导|行動引導');
+  const request = brief.split('【本次制作需求】').at(-1);
+  const requestedFacts = request.match(/^准确事实[：:]([\s\S]*?)(?=^(?:客户行动|目标时长|语言声音)[：:]|^【|(?![\s\S]))/m)?.[1]?.trim();
+  const factText = requestedFacts || (facts + '\n' + description);
+  const price = factText.match(/(?:RM|HK\$|S\$|SGD|USD|RMB|¥|\$)\s*\d+(?:[.,]\d+)?/i)?.[0] || '';
+  const action = field(request, '客户行动|客戶行動') || field(project, '行动引导|行動引導');
   const validAction = action && !/^(未填写|未填寫|无|無)$/.test(action) ? action : '';
   const mandarin = voiceFor(job).language === 'zh-CN';
   const training = /培训|培訓|课程|課程|实战课|實戰課/.test(topic + field(brief, '业务主题|業務主題|业务类型|業務類型'));
-  const duration = (facts + '\n' + description).match(/\d+(?:\.\d+)?\s*(?:小时|小時)/)?.[0];
-  const points = [...(facts + '\n' + description).matchAll(/✅\s*([^\n✅]+)/g)].map((m) => m[1].trim()).slice(0, 3);
+  const duration = factText.match(/\d+(?:\.\d+)?\s*(?:小时|小時)/)?.[0];
+  const online = /线上|線上|录播|錄播|online|recorded/i.test(factText);
+  const practical = !online && /实操|實操/.test(factText);
+  const offline = !online && /线下|線下/.test(factText);
+  const points = [...factText.matchAll(/✅\s*([^\n✅]+)/g)].map((m) => m[1].trim()).slice(0, 3);
   const title = topic.slice(0, 36);
   const hook = training
-    ? `${duration || '现场'}实操\n${title}`
+    ? `${duration || ''}${practical ? '实操' : '课程介绍'}\n${title}`
     : `${title}\n${mandarin ? '先了解，再决定' : '先了解，再決定'}`;
   const hookVo = training
-    ? `想了解${topic}？${duration ? duration + '线下实操，' : ''}先看看现场内容，再决定是否报名。`
+    ? `想了解${topic}？${duration || ''}${offline ? '线下' : ''}${practical ? '实操，' : '课程，'}先看看课程内容，再决定是否报名。`
     : mandarin ? `想了解${topic}？先看看真实内容，再决定。` : `想了解${topic}？先睇下實際內容，再決定。`;
   const cards = training && points.length === 3 ? points : mandarin ? ['了解项目内容', '查看真实过程', 'WhatsApp了解详情'] : ['了解項目內容', '睇實際過程', 'WhatsApp了解詳情'];
-  const middleVo = training && points.length ? `现场内容包括${points.join('、')}。` : mandarin ? `这里展示${topic}的真实资料，你可以先了解实际内容。` : `呢度係${topic}嘅實際資料，你可以先了解清楚內容。`;
+  const middleVo = training && points.length ? `课程内容包括${points.join('、')}。` : mandarin ? `这里展示${topic}的真实资料，你可以先了解实际内容。` : `呢度係${topic}嘅實際資料，你可以先了解清楚內容。`;
   const cta = validAction || (training ? 'WhatsApp了解报名' : mandarin ? 'WhatsApp了解详情' : 'WhatsApp了解詳情');
   const button = training ? 'WhatsApp 报名' : /预约|預約/.test(cta) ? (mandarin ? 'WhatsApp 预约' : 'WhatsApp 預約') : 'WhatsApp 了解';
   return scenes.map((scene, i) => ({ ...scene, ...[
