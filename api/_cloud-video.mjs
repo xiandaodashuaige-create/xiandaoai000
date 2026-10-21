@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
-import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob } from './_cloud-tts.mjs';
+import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob, createGatewaySynthesizer, gatewaySpeechConfigured } from './_cloud-tts.mjs';
 import { englishStoryboard, industryStoryboard } from './_cloud-industry.mjs';
 import sharp from 'sharp';
 import { prepareAiHybridAssets } from './_cloud-media-providers.mjs';
@@ -341,12 +341,16 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   let voiceSource = uploadedVoice ? 'uploaded' : 'none';
   let voiceError = null;
   if (!uploadedVoice) {
-    const timed = await renderVoiceTrack({ job, scenes, workdir, synthesize: options.synthesize });
+    await onProgress(25, '云端正在生成同一声音的连续旁白');
+    const mediaEnv = options.mediaEnv || process.env;
+    const synthesize = options.synthesize || (gatewaySpeechConfigured(mediaEnv) ? createGatewaySynthesizer({ env: mediaEnv }) : undefined);
+    const timed = await renderVoiceTrack({ job, scenes, workdir, synthesize });
     if (timed.ok) {
       voice = timed.path;
       voiceSource = 'tts';
     } else {
       voiceError = timed.reason;
+      if (job.workflow_mode === 'ai_hybrid') throw new Error(`voiceover_generation_failed:${timed.reason}`);
     }
   }
   const segments = [];

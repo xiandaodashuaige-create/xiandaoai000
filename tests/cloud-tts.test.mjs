@@ -92,3 +92,42 @@ test('if synthesis fails, the render continues without voice and says so', async
   });
   assert.deepEqual(out, { voice: null, voiceSource: 'none', voiceError: 'edge_unreachable' });
 });
+
+test('cloud speech uses the deployed Gateway identity and one dialect-specific voice', async () => {
+  const { createGatewaySynthesizer, gatewaySpeechConfigured } = await import('../api/_cloud-tts.mjs');
+  assert.equal(gatewaySpeechConfigured({ VERCEL_OIDC_TOKEN:'x' }),false);
+  let config; const requests=[];
+  const synth=createGatewaySynthesizer({env:{AI_MEDIA_GENERATION_ENABLED:'true',VERCEL_OIDC_TOKEN:'test'},
+    gatewayFactory:(value)=>{config=value;return {speechModel:(id)=>({id})};},
+    speechGenerator:async(value)=>{requests.push(value);return {audio:{uint8Array:new Uint8Array(4096)}};},
+  });
+  assert.equal((await synth({text:'歡迎預約',voice:'zh-HK-HiuMaanNeural',rate:'+4%'})).length,4096);
+  await synth({text:'欢迎参加',voice:'zh-CN-XiaoxiaoNeural',rate:'+4%'});
+  assert.equal(config.headers['ai-gateway-auth-method'],'oidc');
+  assert.equal(requests[0].model.id,'google/gemini-3.8-flash-tts');
+  assert.equal(requests[0].voice,requests[1].voice);
+  assert.match(requests[0].instructions,/Cantonese, not Mandarin/);
+  assert.match(requests[1].instructions,/Mandarin Chinese/);
+  assert.equal(requests[0].maxRetries,0);
+  assert.equal(voiceFor({brief:'语言：马来西亚华语'}).language,'zh-CN');
+  assert.equal(voiceFor({brief:'语言：香港粤语'}).language,'zh-HK');
+});
+
+test('current request language overrides the stored project default',()=>{
+  const brief='语言：香港粤语\n【本次制作需求】\n语言声音：马来西亚华语，真人自然节奏';
+  assert.equal(voiceFor({brief}).language,'zh-CN');
+  assert.equal(voiceFor({brief:brief.replace('马来西亚华语','English')}).language,'en-US');
+});
+
+test('male and alternate voice revisions select distinct supported speakers',async()=>{
+  const { createGatewaySynthesizer }=await import('../api/_cloud-tts.mjs');
+  const male=voiceFor({brief:'语言：普通话',revision_scope:'voice',revision_prompt:'改成男声'});
+  assert.equal(male.voice,'zh-CN-YunxiNeural');
+  const alternate=voiceFor({brief:'语言：香港粤语',revision_scope:'voice',revision_prompt:'換個聲音'});
+  assert.equal(alternate.voice,'zh-HK-HiuGaaiNeural');
+  assert.equal(voiceFor({brief:'语言：香港粤语',revision_scope:'voice',revision_prompt:'改成普通话'}).language,'zh-CN');
+  const requests=[];
+  const synth=createGatewaySynthesizer({env:{AI_MEDIA_GENERATION_ENABLED:'true',VERCEL_OIDC_TOKEN:'fixture'},gatewayFactory:()=>({speechModel:id=>({id})}),speechGenerator:async options=>{requests.push(options);return {audio:{uint8Array:new Uint8Array(2048)}};}});
+  await synth({text:'测试',...male}); await synth({text:'測試',...alternate});
+  assert.equal(requests[0].voice,'Charon'); assert.equal(requests[1].voice,'Aoede');
+});

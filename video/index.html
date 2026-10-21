@@ -619,6 +619,7 @@ $('submitBtn').onclick=async()=>{
     if(!currentProject)throw new Error('请先选择一个业务项目');
     const brief=$('brief').value.trim();
     if(!brief)throw new Error('先告诉我你想做什么');
+    if(!selected.some(file=>/^(video|image)\//.test(file.type)))throw new Error('请先上传至少一段视频或一张图片，才能开始真实素材混剪');
     const autoName='视频任务 '+new Date().toLocaleDateString()+' '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
     setStatus('正在创建任务…',2);
     const language=$('remixLanguage').value==='跟随项目默认语言'?currentProject.default_language:$('remixLanguage').value;

@@ -1,5 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import { experimental_generateSpeech as generateSpeech } from 'ai';
+import { createGateway } from '@ai-sdk/gateway';
 import { isEnglishJob, voiceRulesFor } from './_cloud-industry.mjs';
 
 export { isEnglishJob };
@@ -15,8 +17,35 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 // Same voice and rate rules as the local worker, including the male/female
 // Cantonese switch requested through the revision prompt.
 export function voiceFor(job) {
-  const { english, voice, rate } = voiceRulesFor(job);
-  return { voice, rate, language: english ? 'en-US' : 'zh-HK' };
+  const rules = voiceRulesFor(job);
+  const request = String(job?.brief || '').replaceAll('\\n', '\n').split('【本次制作需求】').at(-1);
+  const revisionLanguage = job?.revision_scope === 'voice' ? String(job.revision_prompt || '').match(/普通话|普通話|马来西亚华语|馬來西亞華語|华语|華語|香港粤语|香港粵語|粤语|粵語|Mandarin|Cantonese|English|zh-CN|zh-HK/gi)?.at(-1) : '';
+  const declared = revisionLanguage || [...request.matchAll(/^(?:语言声音|语言|語言|Language)[：:]\s*([^\n]+)/gm)].at(-1)?.[1] || job?.language || job?.locale || '';
+  const english = declared ? /English|^en(?:-|$)/i.test(declared) : rules.english;
+  const mandarin = !english && /普通话|普通話|华语|華語|Mandarin|zh-CN/i.test(declared);
+  const mandarinVoice = /WanLung/.test(rules.voice) ? 'zh-CN-YunxiNeural' : /HiuGaai/.test(rules.voice) ? 'zh-CN-XiaoyiNeural' : 'zh-CN-XiaoxiaoNeural';
+  return { voice: english ? 'en-US-JennyNeural' : mandarin ? mandarinVoice : rules.voice, rate: rules.rate, language: english ? 'en-US' : mandarin ? 'zh-CN' : 'zh-HK' };
+}
+
+export function gatewaySpeechConfigured(env = process.env) {
+  return String(env.AI_MEDIA_GENERATION_ENABLED).toLowerCase() === 'true' && Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN);
+}
+
+export function createGatewaySynthesizer({ env = process.env, fetcher = fetch, speechGenerator = generateSpeech, gatewayFactory = createGateway } = {}) {
+  return async ({ text, voice, rate }) => {
+    if (!gatewaySpeechConfigured(env)) throw new Error('cloud_tts_not_configured');
+    const token = env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN;
+    const gateway = gatewayFactory({ apiKey: token, fetch: fetcher, ...(!env.AI_GATEWAY_API_KEY ? { headers: { 'ai-gateway-auth-method': 'oidc' } } : {}) });
+    const language = voice.startsWith('en-') ? 'natural English' : voice.startsWith('zh-CN') ? 'natural Mandarin Chinese' : 'natural Hong Kong Cantonese, not Mandarin';
+    const result = await speechGenerator({
+      model: gateway.speechModel(env.AI_GATEWAY_TTS_MODEL || 'google/gemini-3.8-flash-tts'),
+      text, voice: /WanLung|Yunxi/.test(voice) ? 'Charon' : /HiuGaai|Xiaoyi/.test(voice) ? 'Aoede' : 'Kore', outputFormat: 'wav',
+      instructions: `Read only the provided text in ${language}. One consistent adult speaker, warm and clear commercial delivery, conversational rhythm, no music or sound effects.`,
+      speed: 1 + (Number.parseFloat(rate) || 0) / 100,
+      maxRetries: 0, abortSignal: AbortSignal.timeout(55_000),
+    });
+    return Buffer.from(result.audio.uint8Array);
+  };
 }
 
 // Scene copy is joined into one short narration. Characters that could
