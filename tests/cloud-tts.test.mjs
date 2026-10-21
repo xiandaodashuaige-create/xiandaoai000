@@ -112,3 +112,9 @@ test('cloud speech uses the deployed Gateway identity and one dialect-specific v
   assert.equal(voiceFor({brief:'语言：马来西亚华语'}).language,'zh-CN');
   assert.equal(voiceFor({brief:'语言：香港粤语'}).language,'zh-HK');
 });
+
+test('current request language overrides the stored project default',()=>{
+  const brief='语言：香港粤语\n【本次制作需求】\n语言声音：马来西亚华语，真人自然节奏';
+  assert.equal(voiceFor({brief}).language,'zh-CN');
+  assert.equal(voiceFor({brief:brief.replace('马来西亚华语','English')}).language,'en-US');
+});
