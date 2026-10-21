@@ -234,6 +234,19 @@ async function heartbeat(accessCode, jobId, stage, progress) {
   await rpc('video_agent_worker_heartbeat', { p_access: accessCode, p_job_id: jobId, p_worker_id: WORKER, p_stage: stage, p_progress: progress });
 }
 
+export async function renderVideoVersions(job, downloaded, onProgress, options, render = renderCloudVideo) {
+  const count = job.workflow_mode === 'remix' ? Math.max(1, Math.min(3, Number(job.output_count) || 1)) : 1;
+  const versions = [];
+  for (let index = 0; index < count; index += 1) {
+    // Keep the durable job identity for ownership; vary only the render seed
+    // and scratch directory so the requested remix versions differ.
+    const variantJob = index === 0 ? job : { ...job, id: `${job.id}-version-${index + 1}` };
+    const rendered = await render(variantJob, downloaded, onProgress, options);
+    versions.push(rendered);
+  }
+  return versions;
+}
+
 async function runOne(accessCode, mediaEnv = process.env) {
   const job = await rpc('video_agent_claim_cloud_job', { p_access: accessCode, p_worker_id: WORKER });
   if (!job?.id) return { ok: true, claimed: false };
@@ -244,6 +257,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
     let fileName;
     let contentType;
     let artifactMeta = {};
+    let videoVersions = [];
     if (job.workflow_mode === 'image_poster') {
       let source;
       if (main?.path) {
@@ -263,7 +277,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
       await heartbeat(accessCode, job.id, '云端正在下载项目隔离素材', 14);
       const downloaded = [];
       for (let index = 0; index < inputs.length; index += 1) downloaded.push(await downloadToTmp(inputs[index], index, job.id));
-      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress), {
+      videoVersions = await renderVideoVersions(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress), {
         mediaEnv,
         onAsset: async (asset) => {
           const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: INPUT_BUCKET, p_file_name: asset.name });
@@ -274,6 +288,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
           });
         },
       });
+      const rendered = videoVersions[0];
       result = rendered.data;
       fileName = 'creative-cloud.mp4';
       contentType = 'video/mp4';
@@ -291,18 +306,29 @@ async function runOne(accessCode, mediaEnv = process.env) {
       };
     }
     await heartbeat(accessCode, job.id, '云端成品已生成，正在回传', 94);
-    const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: fileName });
-    await upload(RESULT_BUCKET, dest, result, contentType);
-    const sha256 = crypto.createHash('sha256').update(result).digest('hex');
+    const outputs = [];
+    const versions = videoVersions.length ? videoVersions : [{ data: result }];
+    for (let index = 0; index < versions.length; index += 1) {
+      const variant = versions[index];
+      const name = index === 0 ? fileName : `creative-cloud-${index + 1}.mp4`;
+      const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: name });
+      await upload(RESULT_BUCKET, dest, variant.data, contentType);
+      const sha256 = crypto.createHash('sha256').update(variant.data).digest('hex');
+      outputs.push({ name, path: dest, type: contentType, ...artifactMeta,
+        ...(videoVersions.length ? { duration_seconds: variant.durationSeconds, voice_source: variant.voiceSource, voice_error: variant.voiceError || undefined,
+          fps: variant.quality?.fps, bitrate_kbps: variant.quality?.bitrateKbps, loudness_lufs: variant.quality?.loudnessLUFS,
+          true_peak_dbtp: variant.quality?.truePeakDBTP, media_generation: variant.mediaGeneration } : {}), sha256 });
+    }
+    const sha256 = outputs[0].sha256;
     await rpc('video_agent_worker_set_artifact_metadata', {
       p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER, p_output_sha256: sha256,
     });
     await rpc('video_agent_worker_update', {
       p_access: accessCode, p_job_id: job.id, p_status: 'completed', p_progress: 100,
       p_stage: job.workflow_mode === 'image_poster' ? '云端已完成，可查看海报' : '云端已完成，可查看成片',
-      p_output_files: [{ name: fileName, path: dest, type: contentType, sha256, ...artifactMeta }], p_error_message: null,
+      p_output_files: outputs, p_error_message: null,
     });
-    return { ok: true, claimed: true, job_id: job.id, output_path: dest };
+    return { ok: true, claimed: true, job_id: job.id, output_path: outputs[0].path, output_paths: outputs.map((item) => item.path) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('cloud_worker_failed', { job_id: job.id, workflow_mode: job.workflow_mode, error: safeErrorCode(message) });
