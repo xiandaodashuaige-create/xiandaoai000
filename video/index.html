@@ -277,7 +277,7 @@ select,input.text{width:100%;border:1px solid #28493b;background:#07140f;color:w
     <div class="uploadgrid">
       <label class="uploadbox"><b>① 客户真实案例素材 *</b><small>课堂、学员、服务过程、真实反馈。中段只从这里选证据。</small><input id="aiMainFiles" type="file" accept="video/*,image/*" multiple></label>
       <label class="uploadbox"><b>② 参考爆款（可选）</b><small>只学习 Hook、节奏、案例穿插和 CTA，不复制原画面。</small><input id="aiReferenceFiles" type="file" accept="video/*" multiple></label>
-      <label class="uploadbox"><b>③ AI 人物参考（推荐）</b><small>上传清晰正脸照，开头与结尾保持同一人物、服装和气质。</small><input id="aiCharacterFiles" type="file" accept="image/*" multiple></label>
+      <label class="uploadbox"><b>③ AI 人物参考（可选）</b><small>可上传清晰正脸照；未上传时自动创建专属 AI 人物，开头与结尾共用同一形象。不会使用客户案例或参考爆款中的人物代替。</small><input id="aiCharacterFiles" type="file" accept="image/jpeg,image/png,image/webp"></label>
       <label class="uploadbox"><b>④ 品牌与补充资料（可选）</b><small>Logo、海报、课程信息、WhatsApp 截图、产品图或资料包。</small><input id="aiAssetFiles" type="file" accept="video/*,image/*,.zip" multiple></label>
     </div>
 
@@ -654,6 +654,8 @@ $('aiSubmitBtn').onclick=async()=>{
     const action=$('aiAction').value.trim();
     if(!business||!audience||!facts||!action)throw new Error('请先填写业务、目标客户、准确报名信息和行动目标');
     if(!$('aiMainFiles').files.length)throw new Error('请至少上传一段客户真实案例素材，作为中段证据');
+    const portrait=$('aiCharacterFiles').files[0];
+    if(portrait&&(!['image/jpeg','image/png','image/webp'].includes(portrait.type)||portrait.size>10*1024*1024))throw new Error('人物参考请使用 10MB 以内的 JPG、PNG 或 WebP 图片');
     const hook=$('aiHook').value.trim()||'由系统根据业务和目标客户起草，前三秒必须有明确利益点或反差，不能空泛。';
     const proof=$('aiProof').value.trim()||'从客户真实案例素材中提取最能证明课程或服务价值的画面，保留真实现场感。';
     const cta=$('aiCta').value.trim()||'根据准确报名信息生成清晰行动引导，最后一秒仍保持声音与 CTA 画面。';
