@@ -66,3 +66,24 @@ test('character generation is campaign scoped and never hardcodes a previous bus
   const prompt = characterPrompt({ brief: '项目：线下课\n业务主题：AI教学\n准确事实：RM49\n禁止出现：美容院\n参考爆款：某人' });
   assert.match(prompt, /AI教学/); assert.doesNotMatch(prompt, /美容院|RM49|某人/);
 });
+
+test('a changed brief regenerates inherited AI shots instead of silently ignoring a revision', async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'character-revision-'));
+  const referencePath = path.join(workdir, 'reference.jpg');
+  await sharp({ create: { width: 768, height: 1360, channels: 3, background: '#634244' } }).jpeg().toFile(referencePath);
+  let calls = 0;
+  try {
+    const result = await prepareAiHybridAssets({
+      job: { id: 'revised', parent_job_id: 'old', workflow_mode: 'ai_hybrid', brief: '开头换一种表达' }, workdir, env, gatewayFactory,
+      downloadedInputs: [
+        { role: 'character_reference', type: 'image/jpeg', localPath: referencePath },
+        { role: 'ai_hook', type: 'video/mp4', localPath: '/old.mp4', generation: { brief_sha256: 'old-brief' } },
+        { role: 'ai_cta', type: 'video/mp4', localPath: '/old-cta.mp4', generation: { brief_sha256: 'old-brief' } },
+      ], scenes: [{ title: 'New hook', seconds: 5 }, { title: 'New CTA', seconds: 5 }],
+      videoGenerator: async () => { calls++; return generatedVideo(`new-${calls}`); },
+    });
+    assert.equal(calls, 2);
+    assert.ok(result.inputs.every((item) => item.localPath !== '/old.mp4' && item.localPath !== '/old-cta.mp4'));
+    assert.ok(result.generation.every((item) => /^[a-f0-9]{64}$/.test(item.brief_sha256)));
+  } finally { await rm(workdir, { recursive: true, force: true }); }
+});
