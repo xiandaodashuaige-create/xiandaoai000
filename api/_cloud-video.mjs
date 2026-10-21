@@ -320,7 +320,7 @@ export async function renderCloudVideo(job, downloadedInputs, onProgress = async
   await rm(workdir, { recursive: true, force: true });
   await mkdir(workdir, { recursive: true });
   const scenes = copyFor(job);
-  const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress, env: options.mediaEnv || process.env });
+  const prepared = await prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, onProgress, onAsset: options.onAsset, env: options.mediaEnv || process.env });
   const activeInputs = prepared.inputs;
   // Remix jobs (#564): each storyboard slot is filled from a seeded plan over
   // the customer's uploaded footage. Other jobs keep the role-based selection.

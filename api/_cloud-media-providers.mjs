@@ -330,34 +330,83 @@ export function aiVideoIdempotencyKey(job = {}, role = 'clip') {
   return `v3-${crypto.createHash('sha256').update(`${identity}:${role}`).digest('hex').slice(0, 48)}`;
 }
 
-export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
+export function characterPrompt(job) {
+  const context = String(job.brief || '').replaceAll('\\n', '\n').split('\n')
+    .filter((line) => /^(项目：|业务类型：|业务说明：|业务主题：|产品\/服务：|目标客户：|语言：)/.test(line.trim()))
+    .join('\n').slice(0, 1500);
+  return `Create a fictional adult spokesperson for this campaign, not a real client, testimonial subject, patient, or person from a reference ad. One person only, fully clothed professional everyday wardrobe, facing camera. Eye-level medium shot, complete head, hair, shoulders and upper torso, generous headroom, hands relaxed, natural photorealistic face, neutral welcoming expression, softly lit uncluttered setting appropriate to the campaign. No service demonstration, medical procedure, before/after comparison, text, numbers, logos or watermarks. This image will anchor the SAME AI presenter in the opening and closing video shots. Campaign context:\n${context}`;
+}
+
+// Never repurpose proof photos or reference ads as a spokesperson's identity.
+// With no uploaded portrait, generate one fictional character once and checkpoint
+// it before either paid video task. Both shots receive the exact same bytes.
+export async function prepareCharacterReference({ job, downloadedInputs, workdir, env, fetcher, onProgress, onAsset, imageGenerator = generateOpenAiImage }) {
+  const reference = downloadedInputs.find((item) => item.role === 'character_reference' && item.localPath);
+  let data;
+  if (reference) {
+    if (!String(reference.type || '').startsWith('image/')) throw new Error('ai_video_reference_unsupported_type');
+    data = await readFile(reference.localPath);
+    if (data.length > 10 * 1024 * 1024) throw new Error('ai_video_reference_too_large');
+  } else {
+    await onProgress(16, '未上传人物照，正在创建本任务专属 AI 人物');
+    const generated = await imageGenerator({ prompt: characterPrompt(job), size: '1024x1536', env, fetcher });
+    data = generated.data;
+  }
+  let normalized;
+  try {
+    // EXIF orientation, small/transparent uploads and provider pixel limits.
+    const image = sharp(data);
+    const metadata = await image.metadata();
+    normalized = reference?.generation?.generated_character && metadata.format === 'jpeg' && metadata.width === 768 && metadata.height === 1360
+      ? data
+      : await image.rotate().resize(768, 1360, { fit: 'contain', background: '#ebe8e3' }).flatten({ background: '#ebe8e3' }).jpeg({ quality: 92 }).toBuffer();
+  } catch { throw new Error('ai_video_reference_invalid_image'); }
+  if (!reference) {
+    const localPath = path.join(workdir, 'character-reference.jpg');
+    await writeFile(localPath, normalized);
+    await onAsset({ role: 'character_reference', type: 'image/jpeg', name: 'character-reference.jpg', localPath,
+      generation: { generated_character: true, sha256: sha256(normalized) } });
+  }
+  return { data: normalized, type: 'image/jpeg' };
+}
+
+export async function prepareAiHybridAssets({ job, downloadedInputs, scenes, workdir, env = process.env, fetcher = fetch, sleeper = sleep, onProgress = async () => {}, onAsset = async () => {}, imageGenerator = generateOpenAiImage, videoGenerator = generateVideo, gatewayFactory = createGateway }) {
   if (job.workflow_mode !== 'ai_hybrid') return { inputs: downloadedInputs, generation: [] };
+  const briefSha256 = sha256(Buffer.from(String(job.brief || '')));
+  // A retry keeps the same brief. A requested revision must not silently reuse
+  // shots generated for the previous copy, pacing or scene direction.
+  downloadedInputs = downloadedInputs.filter((item) => !['ai_hook', 'ai_cta'].includes(item.role) || !item.generation || item.generation.brief_sha256 === briefSha256);
   const existingHook = downloadedInputs.some((item) => item.role === 'ai_hook');
   const existingCta = downloadedInputs.some((item) => item.role === 'ai_cta');
   const missing = [
     ...(!existingHook ? [{ role: 'ai_hook', scene: scenes[0], position: 'opening hook' }] : []),
     ...(!existingCta ? [{ role: 'ai_cta', scene: scenes.at(-1), position: 'closing call-to-action' }] : []),
   ];
-  if (!missing.length) return { inputs: downloadedInputs, generation: [] };
+  const cachedGeneration = downloadedInputs.filter((item) => ['ai_hook', 'ai_cta'].includes(item.role) && item.generation).map((item) => item.generation);
+  if (!missing.length) return { inputs: downloadedInputs, generation: cachedGeneration };
   const capabilities = mediaProviderCapabilities(env);
   // AI Hybrid is a video-generation workflow. Still-image generation is useful
   // for posters, but silently substituting stills here would falsely report that
   // AI video generation succeeded.
   if (!capabilities.video) throw new Error('ai_video_provider_not_configured');
-  const reference = downloadedInputs.find((item) => item.role === 'character_reference' && String(item.type || '').startsWith('image/') && item.localPath);
-  const referenceData = reference ? await readFile(reference.localPath) : null;
-  if (referenceData && referenceData.length > 10 * 1024 * 1024) throw new Error('ai_video_reference_too_large');
-  const referenceImage = referenceData ? { data: referenceData, type: reference.type } : null;
-  if (!referenceImage) throw new Error('ai_video_reference_required');
+  const referenceImage = await prepareCharacterReference({ job, downloadedInputs, workdir, env, fetcher, onProgress, onAsset, imageGenerator });
   const negativePrompt = negativeVisualPrompt(job);
-  const generated = await Promise.all(missing.map(async (item, index) => {
+  const outcomes = await Promise.allSettled(missing.map(async (item, index) => {
     const prompt = visualPrompt(job, item.scene, item.position);
     const idempotencyKey = aiVideoIdempotencyKey(job, item.role);
     const result = await generateAiVideoClip({ prompt, negativePrompt, duration: item.scene?.seconds || 5, referenceImage, idempotencyKey, env, fetcher, sleeper, onProgress, maxWaitMs: env.AI_PROVIDER_MAX_WAIT_MS, videoGenerator, gatewayFactory });
     const localPath = path.join(workdir, `${item.role}-${index}${result.type === 'video/webm' ? '.webm' : '.mp4'}`);
     await writeFile(localPath, result.data);
-    return { input: { role: item.role, type: result.type, name: path.basename(localPath), localPath }, meta: { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, character_reference_used: true, duration_seconds: item.scene?.seconds || 5, billing_route: result.provider === 'vercel-ai-gateway' ? 'gateway' : 'direct' } };
+    const meta = { role: item.role, provider: result.provider, model: result.model, task_id: result.taskId, sha256: result.sha256, brief_sha256: briefSha256, character_reference_used: true, duration_seconds: item.scene?.seconds || 5, billing_route: result.provider === 'vercel-ai-gateway' ? 'gateway' : 'direct' };
+    const input = { role: item.role, type: result.type, name: path.basename(localPath), localPath, generation: meta };
+    await onAsset(input);
+    return { input, meta };
   }));
+  // Wait for both siblings to settle so a successful paid shot is durably saved
+  // before marking the job failed; retry only generates the missing shot.
+  const failure = outcomes.find((item) => item.status === 'rejected');
+  if (failure) throw failure.reason;
+  const generated = outcomes.map((item) => item.value);
   await onProgress(24, `AI 已生成 ${generated.length} 个补充镜头，开始混剪`);
-  return { inputs: [...downloadedInputs, ...generated.map((item) => item.input)], generation: generated.map((item) => item.meta) };
+  return { inputs: [...downloadedInputs, ...generated.map((item) => item.input)], generation: [...cachedGeneration, ...generated.map((item) => item.meta)] };
 }
