@@ -9,7 +9,7 @@ import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
 import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
 
-export const config = { maxDuration: 300 };
+export const config = { maxDuration: 800 };
 
 const WORKER = 'VERCEL-CREATIVE-V2';
 const INPUT_BUCKET = 'video-agent-inputs';
@@ -263,7 +263,17 @@ async function runOne(accessCode, mediaEnv = process.env) {
       await heartbeat(accessCode, job.id, '云端正在下载项目隔离素材', 14);
       const downloaded = [];
       for (let index = 0; index < inputs.length; index += 1) downloaded.push(await downloadToTmp(inputs[index], index, job.id));
-      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress), { mediaEnv });
+      const rendered = await renderCloudVideo(job, downloaded, (progress, stage) => heartbeat(accessCode, job.id, stage, progress), {
+        mediaEnv,
+        onAsset: async (asset) => {
+          const dest = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: INPUT_BUCKET, p_file_name: asset.name });
+          await upload(INPUT_BUCKET, dest, await readFile(asset.localPath), asset.type);
+          await rpc('video_agent_worker_checkpoint_asset', {
+            p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER,
+            p_asset: { role: asset.role, type: asset.type, name: asset.name, path: dest, generation: asset.generation },
+          });
+        },
+      });
       result = rendered.data;
       fileName = 'creative-cloud.mp4';
       contentType = 'video/mp4';
@@ -295,6 +305,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
     return { ok: true, claimed: true, job_id: job.id, output_path: dest };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error('cloud_worker_failed', { job_id: job.id, workflow_mode: job.workflow_mode, error: safeErrorCode(message) });
     if (job.workflow_mode === 'ai_hybrid') {
       await rpc('video_agent_worker_update', {
         p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 100,
