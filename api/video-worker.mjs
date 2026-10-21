@@ -324,6 +324,14 @@ async function runOne(accessCode, mediaEnv = process.env) {
       });
       return { ok: false, claimed: true, job_id: job.id, fallback: null, error: message };
     }
+    if (['remix', 'image_poster'].includes(job.workflow_mode)) {
+      await rpc('video_agent_worker_update', {
+        p_access: accessCode, p_job_id: job.id, p_status: 'failed', p_progress: 100,
+        p_stage: `云端制作失败，请查看原因后重试（原因：${safeErrorCode(message)}）`,
+        p_output_files: [], p_error_message: message,
+      });
+      return { ok: false, claimed: true, job_id: job.id, fallback: null, error: message };
+    }
     await rpc('video_agent_cloud_fallback', { p_access: accessCode, p_job_id: job.id, p_worker_id: WORKER, p_error_message: message });
     return { ok: false, claimed: true, job_id: job.id, fallback: 'local', error: message };
   }
