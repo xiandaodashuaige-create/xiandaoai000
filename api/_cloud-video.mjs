@@ -100,12 +100,13 @@ function contextualStoryboard(job, scenes, brief) {
   const cards = training && points.length === 3 ? points : mandarin ? ['了解项目内容', '查看真实过程', 'WhatsApp了解详情'] : ['了解項目內容', '睇實際過程', 'WhatsApp了解詳情'];
   const middleVo = training && points.length ? `现场内容包括${points.join('、')}。` : mandarin ? `这里展示${topic}的真实资料，你可以先了解实际内容。` : `呢度係${topic}嘅實際資料，你可以先了解清楚內容。`;
   const cta = validAction || (training ? 'WhatsApp了解报名' : mandarin ? 'WhatsApp了解详情' : 'WhatsApp了解詳情');
+  const button = training ? 'WhatsApp 报名' : /预约|預約/.test(cta) ? (mandarin ? 'WhatsApp 预约' : 'WhatsApp 預約') : 'WhatsApp 了解';
   return scenes.map((scene, i) => ({ ...scene, ...[
     { kicker: mandarin ? '先看这里' : '先睇呢度', title: hook, subtitle: hookVo, vo: hookVo },
-    { kicker: mandarin ? '项目内容' : '項目內容', cards, vo: cards.join('、') + '。' },
+    { kicker: mandarin ? '项目内容' : '項目內容', cards, positiveCards: true, vo: cards.join('、') + '。' },
     { kicker: mandarin ? '真实资料' : '實際資料', title, subtitle: middleVo, vo: middleVo },
     { messages: [`你好，想了解${title}`, cta], subtitle: cta, vo: cta },
-    { kicker: mandarin ? '了解详情' : '了解詳情', title: [title, price].filter(Boolean).join('\n'), button: cta, subtitle: cta, vo: [price, cta].filter(Boolean).join('，') },
+    { kicker: mandarin ? '了解详情' : '了解詳情', title: [title, price].filter(Boolean).join('\n'), button, subtitle: cta, vo: [price, cta].filter(Boolean).join('，') },
   ][i] }));
 }
 
@@ -173,8 +174,11 @@ export async function overlayPng(scene, output) {
       const h = Math.max(t.height, px(44)) + pad * 2;
       const cy = y + h / 2;
       shapes.push(`<rect x="${px(60)}" y="${y}" width="${px(600)}" height="${h}" rx="${px(18)}" fill="#ffffff" fill-opacity=".95"/>`);
-      shapes.push(`<circle cx="${px(100)}" cy="${cy}" r="${px(20)}" fill="#e53935"/>`);
-      shapes.push(`<path d="M${px(91)} ${cy - px(9)} L${px(109)} ${cy + px(9)} M${px(109)} ${cy - px(9)} L${px(91)} ${cy + px(9)}" stroke="#ffffff" stroke-width="${px(4)}" stroke-linecap="round"/>`);
+      shapes.push(`<circle cx="${px(100)}" cy="${cy}" r="${px(20)}" fill="${scene.positiveCards ? '#16883e' : '#e53935'}"/>`);
+      const marker = scene.positiveCards
+        ? `M${px(89)} ${cy} L${px(97)} ${cy + px(8)} L${px(112)} ${cy - px(9)}`
+        : `M${px(91)} ${cy - px(9)} L${px(109)} ${cy + px(9)} M${px(109)} ${cy - px(9)} L${px(91)} ${cy + px(9)}`;
+      shapes.push(`<path d="${marker}" fill="none" stroke="#ffffff" stroke-width="${px(4)}" stroke-linecap="round"/>`);
       composites.push({ input: t.image, top: y + pad, left: px(140) });
       y += h + px(22);
     }
