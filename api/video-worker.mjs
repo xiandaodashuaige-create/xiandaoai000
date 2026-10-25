@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
 import { accentFromDominant, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
-import { posterGenerationPrompt } from './_poster-current-brief.mjs';
+import { currentPosterBrief, posterGenerationPrompt } from './_poster-current-brief.mjs';
 
 export const config = { maxDuration: 800 };
 
@@ -131,7 +131,7 @@ function hexToRgb(value) {
 
 export async function renderPoster(job, input) {
   const font = await ensureFont();
-  const brief = String(job.brief || '');
+  const brief = currentPosterBrief(job.brief);
   const placement = posterPlacement(brief);
   const { width, height } = placement;
   const safe = posterSafeZone(height, placement.key);
@@ -254,7 +254,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
         source = await posterSource(main, job.id);
       } else {
         await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
-        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), size: posterPlacement(job.brief).generate, env: mediaEnv });
+        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), size: posterPlacement(currentPosterBrief(job.brief)).generate, env: mediaEnv });
         source = generated.data;
         artifactMeta = { generated_background: true, image_provider: generated.provider, image_model: generated.model, source_sha256: generated.sha256 };
       }

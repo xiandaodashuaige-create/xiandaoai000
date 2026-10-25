@@ -37,7 +37,33 @@ test('Traditional restriction alias and current revision are preserved', () => {
 
 test('actual worker imports and calls the tested helper, no duplicate legacy implementation', () => {
   const worker = readFileSync(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
-  assert.match(worker, /import \{ posterGenerationPrompt \} from '.\/_poster-current-brief.mjs'/);
+  assert.match(worker, /import \{ currentPosterBrief, posterGenerationPrompt \} from '.\/_poster-current-brief.mjs'/);
   assert.match(worker, /prompt: posterGenerationPrompt\(job\)/);
   assert.doesNotMatch(worker, /function posterGenerationPrompt/);
+});
+
+test('numeric exclusions remain semantic constraints, never erased as prices', () => {
+  const prompt = posterGenerationPrompt({ brief: '不能出現：不要18歲以下人物，不要超過2件產品\n风格：靜物' });
+  assert.match(prompt, /不要18歲以下人物，不要超過2件產品/);
+});
+
+test('actual generation size and render placement/revision use the same current request', async () => {
+  const { currentPosterBrief } = await import('../api/_poster-current-brief.mjs');
+  const { posterPlacement, parsePosterRevision } = await import('../api/_poster-copy.mjs');
+  const brief = '尺寸：1080x1920\n【基于上一版继续优化】\n标题大一点，背景粉色\n' + current;
+  const request = currentPosterBrief(brief.replaceAll('\n', '\\n'));
+  assert.equal(posterPlacement(request).key, 'feed');
+  assert.equal(parsePosterRevision(request).background, '');
+  const worker = readFileSync(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
+  assert.match(worker, /const brief = currentPosterBrief\(job.brief\);\s*const placement = posterPlacement\(brief\)/);
+  assert.match(worker, /size: posterPlacement\(currentPosterBrief\(job.brief\)\).generate/);
+  assert.match(worker, /const revision = parsePosterRevision\(brief\)/);
+});
+
+test('a restricted body part does not override an explicitly allowed face/service subject', () => {
+  const prompt = posterGenerationPrompt({ brief: '风格：保留真人面部護理場景\n不能出现：不要手部特寫，但保留真人面部護理場景' });
+  assert.match(prompt, /不要手部特寫，但保留真人面部護理場景/);
+  assert.match(prompt, /Only if the customer explicitly requests a pure still life or excludes all people/);
+  assert.match(prompt, /one body part must not be expanded into a ban on all people/);
+  assert.doesNotMatch(prompt, /For a still life or a request excluding people\/body parts/);
 });
