@@ -7,7 +7,8 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
-import { accentFromDominant, buildPosterPrompt, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
+import { accentFromDominant, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
+import { posterGenerationPrompt } from './_poster-current-brief.mjs';
 
 export const config = { maxDuration: 800 };
 
@@ -216,18 +217,6 @@ export async function renderPoster(job, input) {
   composites.push({ input: titleText, top: titleTop, left: margin });
 
   return sharp(base).composite(composites).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
-}
-
-function posterGenerationPrompt(job) {
-  return buildPosterPrompt({
-    purpose: briefValue(job.brief, '产品/服务', ''),
-    style: briefValue(job.brief, '风格', ''),
-    title: briefValue(job.brief, '主标题', job.project_name || ''),
-    brand: briefValue(job.brief, '品牌', ''),
-    facts: briefValue(job.brief, '核心卖点与准确事实', ''),
-    revision: parsePosterRevision(job.brief).background,
-    placement: posterPlacement(job.brief).key,
-  });
 }
 
 async function heartbeat(accessCode, jobId, stage, progress) {
