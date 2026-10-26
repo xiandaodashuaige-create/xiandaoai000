@@ -194,3 +194,10 @@ test('retry of failed revision cannot revert corrected facts to original brief',
   const retry = { ...failedRevision, id: 'retry', parent_job_id: failedRevision.id, version_number: 3, revision_scope: 'retry_failed', revision_prompt: '失败任务复用原素材重试' };
   await assert.rejects(preparePosterSource({ job: retry, parent: failedRevision, loadMain: () => assert.fail('must not use old input facts') }), /retry_revision_state_unavailable/);
 });
+
+
+test('explicit preserved layout cannot silently be discarded by ratio or font changes', () => {
+  const state = { ...original(), layout: { title: { left: 81, top: 700, width: 918, height: 100 } } };
+  for (const request of ['标题放大，保留布局', '比例改为1:1，保持布局']) assert.throws(() => applyPosterRevision(state, request), /conflicting_layout_instructions/);
+  assert.equal(applyPosterRevision(state, '比例改为1:1，保留照片').state.layout, null);
+});

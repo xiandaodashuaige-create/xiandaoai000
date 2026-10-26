@@ -126,6 +126,7 @@ export function applyPosterRevision(previous, revision) {
   for (const keep of text.matchAll(/(?:保留|保持)[^改换換变變；;，,。:：\n]*(?:照片|主图|主圖|排版|布局)[^改换換变變；;，,。:：\n]*[：:]?/gu)) consume(keep[0]);
   if (preserve && replace) fail('conflicting_photo_instructions');
   if (replace) { state.layout = null; changes++; }
+  if (previous.layout && !state.layout && /(?:保留|保持|不(?:要)?改(?:变|變))[^；;，,。\n]*(?:布局|排版)/u.test(text)) fail('conflicting_layout_instructions');
   if (!changes) fail('revision_needs_explicit_fields');
   let remaining = text.split('').map((char, index) => consumed[index] ? ' ' : char).join('');
   remaining = remaining.replace(/只改文字和按钮颜色|只改文字和按鈕顏色/gu, '');
