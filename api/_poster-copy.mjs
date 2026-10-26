@@ -6,7 +6,7 @@
 const PRICE_PATTERN = /(?:RM|HK\$|S\$|US\$|NT\$|\$)\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s?(?:令吉|港币|港幣|新币|新幣|美元|元)/i;
 
 /** Splits "RM98 首次体验 · 60 分钟｜预约送护手霜" into a price block and short lines. */
-export function parsePosterFacts(facts) {
+export function parsePosterFacts(facts, { strict = false } = {}) {
   const text = String(facts || '').trim();
   if (!text) return { price: '', qualifier: '', lines: [] };
   const segments = text
@@ -25,7 +25,7 @@ export function parsePosterFacts(facts) {
     }
     lines.push(segment);
   }
-  return { price, qualifier: qualifier.slice(0, 14), lines: lines.slice(0, 3) };
+  return { price, qualifier: strict ? qualifier : qualifier.slice(0, 14), lines: strict ? lines : lines.slice(0, 3) };
 }
 
 const STYLE_HINTS = [

@@ -336,13 +336,15 @@ test('provider downloads reject local and private-network URLs', async () => {
 });
 
 test('poster UI permits an empty main image and the worker uses only role=main as source', async () => {
-  const [ui, worker] = await Promise.all([
+  const [ui, worker, poster] = await Promise.all([
     readFile(new URL('../video/index.html', import.meta.url), 'utf8'),
     readFile(new URL('../api/video-worker.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../api/_poster-revision.mjs', import.meta.url), 'utf8'),
   ]);
   assert.match(ui, /主视觉图片（可选）/);
   assert.doesNotMatch(ui, /if\(!main\.length\)throw new Error/);
-  assert.match(worker, /inputs\.find\(\(item\) => item\.role === 'main'\);/);
+  assert.match(worker, /preparePosterSource\(/);
+  assert.match(poster, /inputs\.find\(file => file\.role === 'main'\)/);
   assert.doesNotMatch(worker, /missing_main_visual/);
   assert.match(worker, /async function posterSource\(main, jobId\)/);
   assert.match(worker, /'-ss', '1'.*'-frames:v', '1'/s);

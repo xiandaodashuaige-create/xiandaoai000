@@ -75,6 +75,20 @@ export default async function handler(req, res) {
       body: JSON.stringify(req.body),
     });
     const text = await response.text();
+    if (action === 'provider_create_revision' && response.ok) {
+      let returned;
+      try { returned = JSON.parse(text)?.job; } catch { /* rejected below */ }
+      // The existing RPC is idempotent per parent, not per revision text.
+      // A second, different request can return an old child. Never label it
+      // as the newly requested correction or silently enqueue another job.
+      if (!returned?.id || !Number.isInteger(returned.version_number) || returned.version_number < 2 || returned.parent_job_id !== String(req.body.parent_job_id) ||
+          String(returned.revision_prompt || '').trim() !== String(req.body.revision_prompt).trim() ||
+          String(returned.revision_scope || 'auto') !== String(req.body.revision_scope || 'auto') ||
+          returned.external_tenant_id !== String(req.body.tenant_id) ||
+          returned.external_project_id !== String(req.body.project_id)) {
+        return res.status(409).json({ error: 'revision_parent_conflict_use_latest_version' });
+      }
+    }
     res.status(response.status);
     res.setHeader('Content-Type', response.headers.get('content-type') || 'application/json; charset=utf-8');
     return res.send(text);
