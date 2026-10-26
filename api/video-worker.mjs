@@ -7,8 +7,9 @@ import ffmpegPath from 'ffmpeg-static';
 import sharp from 'sharp';
 import { renderCloudVideo } from './_cloud-video.mjs';
 import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-providers.mjs';
-import { accentFromDominant, parsePosterFacts, parsePosterRevision, posterPlacement, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
-import { currentPosterBrief, posterGenerationPrompt } from './_poster-current-brief.mjs';
+import { accentFromDominant, parsePosterFacts, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
+import { posterGenerationPrompt } from './_poster-current-brief.mjs';
+import { preparePosterSource, resolvePosterState, posterStateBrief } from './_poster-revision.mjs';
 
 export const config = { maxDuration: 800 };
 
@@ -89,13 +90,6 @@ async function upload(bucket, objectPath, data, contentType) {
   if (!response.ok) throw new Error(`upload_${response.status}_${(await response.text()).slice(0, 300)}`);
 }
 
-function briefValue(brief, label, fallback = '') {
-  const text = String(brief || '');
-  const request = text.includes('【本次制作需求】') ? text.split('【本次制作需求】').slice(1).join('【本次制作需求】') : text;
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = request.match(new RegExp(`${escaped}[：:]([^\\n]+)`));
-  return match ? match[1].trim() : fallback;
-}
 
 function xml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&apos;' })[char]);
@@ -129,93 +123,100 @@ function hexToRgb(value) {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
-export async function renderPoster(job, input) {
-  const font = await ensureFont();
-  const brief = currentPosterBrief(job.brief);
-  const placement = posterPlacement(brief);
-  const { width, height } = placement;
-  const safe = posterSafeZone(height, placement.key);
+export async function renderPoster(job, input, options = {}) {
+  const font = options.fontPath || await ensureFont();
+  const state = options.state || resolvePosterState(job).state;
+  const { width, height, key } = state.placement;
+  const safe = posterSafeZone(height, key);
   const margin = Math.round(width * 0.075);
   const contentWidth = width - margin * 2;
-  const title = briefValue(brief, '主标题', job.project_name || '营销海报');
-  const facts = briefValue(brief, '核心卖点与准确事实', briefValue(brief, '准确价格/优惠/事实', ''));
-  const cta = briefValue(brief, '行动引导', '');
-  const brand = briefValue(brief, '品牌', briefValue(brief, '客户', 'LULIAN AI'));
-  const copy = parsePosterFacts(facts);
-  const revision = parsePosterRevision(brief);
-
-  const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.95, saturation: 1.02 }).toBuffer();
-  const picked = accentFromDominant((await sharp(base).stats()).dominant);
-  const accent = revision.accent || picked.accent;
-  const onAccent = revision.accent ? accentFromDominant(hexToRgb(revision.accent)).onAccent : picked.onAccent;
-  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050505" stop-opacity=".16"/><stop offset=".34" stop-color="#050505" stop-opacity=".10"/><stop offset=".62" stop-color="#050505" stop-opacity=".58"/><stop offset="1" stop-color="#050505" stop-opacity=".9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  const copy = parsePosterFacts(state.facts, { strict: true });
+  // Freeze the *unlettered* photo and the independently addressable overlay
+  // boxes. Revisions never feed a flattened JPEG back into this compositor.
+  const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.95, saturation: 1.02 }).png().toBuffer();
+  const palette = state.palette || accentFromDominant((await sharp(base).stats()).dominant);
+  const accent = palette.accent;
+  const onAccent = palette.onAccent;
+  const buttonColor = state.buttonColor || accent;
+  const rgb = hexToRgb(buttonColor);
+  const onButton = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) > 140 ? '#1a1410' : '#ffffff';
+  const oldLayout = state.layout;
+  const layout = {};
+  const composites = [];
   const pill = (w, h, fill, opacity = 1) => Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="${h / 2}" fill="${fill}" fill-opacity="${opacity}"/></svg>`);
-  const layer = async (input_, left, top) => ({ input: await input_, left: Math.round(left), top: Math.round(top) });
-
-  const composites = [{ input: shade, top: 0, left: 0 }];
-
-  // Brand chip, top-left, sized to its own text.
-  const brandText = await textLayer(brand.slice(0, 28), font, Math.round(width * 0.032), Math.round(width * 0.5), onAccent, 700);
-  const brandMeta = await sharp(brandText).metadata();
-  const brandW = Number(brandMeta.width || 200) + 48;
-  const brandTop = safe.top;
-  composites.push({ input: pill(brandW, 62, accent), top: brandTop, left: margin });
-  composites.push(await layer(brandText, margin + 24, brandTop + Math.max(8, (62 - Number(brandMeta.height || 40)) / 2)));
-
-  // Build the bottom stack from the call-to-action upward so nothing can
-  // overflow the canvas, whatever the copy length.
+  async function type(role, text, size, maxWidth, color, weight) {
+    const box = oldLayout?.[role];
+    const targetWidth = box?.width || maxWidth;
+    const minimum = Math.max(20, Math.round(size * 0.65));
+    for (let actual = Math.round(size); actual >= minimum; actual -= 2) {
+      const data = await textLayer(text, font, actual, targetWidth, color, weight);
+      const meta = await sharp(data).metadata();
+      if (!box || (meta.width <= box.width && meta.height <= box.height)) return { data, width: meta.width, height: meta.height };
+    }
+    throw new Error(`poster_copy_does_not_fit_${role}`);
+  }
+  async function put(role, data, left, top, reservedWidth, reservedHeight) {
+    const meta = await sharp(data).metadata();
+    const previous = oldLayout?.[role];
+    // Adding/removing a copy group cannot silently change a locked layout.
+    if (oldLayout && !previous) throw new Error(`poster_layout_change_requires_confirmation_${role}`);
+    const box = previous || { left: Math.round(left), top: Math.round(top), width: reservedWidth || meta.width, height: reservedHeight || meta.height };
+    if (box.left < 0 || box.top < 0 || box.left + meta.width > width || box.top + meta.height > height || meta.width > box.width || meta.height > box.height) throw new Error(`poster_layout_overflow_${role}`);
+    layout[role] = box;
+    composites.push({ input: data, top: box.top, left: box.left });
+  }
+  const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050505" stop-opacity=".16"/><stop offset=".34" stop-color="#050505" stop-opacity=".10"/><stop offset=".62" stop-color="#050505" stop-opacity=".58"/><stop offset="1" stop-color="#050505" stop-opacity=".9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  composites.push({ input: shade, top: 0, left: 0 });
+  if (state.brand) {
+    const brand = await type('brand', state.brand, width * 0.032, width * 0.5, onAccent, 700);
+    const bw = oldLayout?.brandPill?.width || brand.width + 48;
+    const bh = Math.max(62, brand.height + 20);
+    await put('brandPill', pill(bw, bh, accent), margin, safe.top);
+    await put('brand', brand.data, margin + 24, safe.top + (bh - brand.height) / 2, Math.round(width * 0.5), brand.height);
+  }
   const gap = Math.round(height * 0.022);
   let cursor = height - safe.bottom;
-  if (cta) {
-    // Full-width action bar (>= 80% of the frame) with a chat/phone glyph: the
-    // one element every high-performing reference ad shared.
-    const ctaWidth = contentWidth;
-    const ctaH = 104;
-    const iconSize = 56;
-    const ctaText = await textLayer(cta, font, Math.round(width * 0.043), ctaWidth - iconSize - 96, onAccent, 800);
-    const ctaMeta = await sharp(ctaText).metadata();
+  if (state.cta) {
+    const ctaH = oldLayout?.button?.height || 104;
+    const cta = await type('cta', state.cta, width * 0.043, contentWidth - 152, onButton, 800);
+    if (cta.height > ctaH - 20) throw new Error('poster_copy_does_not_fit_cta');
     cursor -= ctaH;
-    const icon = Buffer.from(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg"><circle cx="28" cy="28" r="28" fill="${onAccent}"/><g transform="translate(14 14) scale(1.17)"><path fill="${accent}" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></g></svg>`);
-    composites.push({ input: pill(ctaWidth, ctaH, accent), top: cursor, left: margin });
-    composites.push({ input: icon, top: Math.round(cursor + (ctaH - iconSize) / 2), left: margin + 28 });
-    composites.push(await layer(ctaText, margin + 28 + iconSize + 24, cursor + Math.max(10, (ctaH - Number(ctaMeta.height || 50)) / 2)));
+    await put('button', pill(contentWidth, ctaH, buttonColor), margin, cursor);
+    const icon = Buffer.from(`<svg width="56" height="56" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg"><circle cx="28" cy="28" r="28" fill="${onButton}"/><path fill="${buttonColor}" d="M20 15l5 8-3 3c2 4 4 6 8 8l3-3 8 5v5c-16 1-28-11-27-27z"/></svg>`);
+    await put('icon', icon, margin + 28, cursor + (ctaH - 56) / 2);
+    await put('cta', cta.data, margin + 108, cursor + (ctaH - cta.height) / 2, contentWidth - 152, ctaH - 20);
     cursor -= gap * 1.4;
   }
-  if (copy.lines.length > 0) {
-    const linesText = await textLayer(copy.lines.map((line) => `· ${line}`).join('\n'), font, Math.round(width * 0.04), contentWidth, '#f4f1ea', 500);
-    const meta = await sharp(linesText).metadata();
-    cursor -= Number(meta.height || 80);
-    composites.push({ input: linesText, top: Math.round(cursor), left: margin });
+  if (copy.lines.length) {
+    const lines = await type('facts', copy.lines.map(line => `· ${line}`).join('\n'), width * 0.04, contentWidth, '#f4f1ea', 500);
+    cursor -= lines.height;
+    await put('facts', lines.data, margin, cursor, contentWidth, lines.height);
     cursor -= gap;
   }
   if (copy.price) {
-    const priceText = await textLayer(copy.price, font, Math.round(width * 0.125 * revision.priceScale), Math.round(contentWidth * 0.62), accent, 800);
-    const priceMeta = await sharp(priceText).metadata();
-    const priceH = Number(priceMeta.height || 150);
-    const priceW = Number(priceMeta.width || 300);
-    cursor -= priceH;
-    composites.push({ input: priceText, top: Math.round(cursor), left: margin });
+    const price = await type('price', copy.price, width * 0.125 * state.priceScale, Math.round(contentWidth * 0.62), accent, 800);
+    cursor -= price.height;
+    await put('price', price.data, margin, cursor, Math.round(contentWidth * 0.62), price.height);
     if (copy.qualifier) {
-      const qualText = await textLayer(copy.qualifier, font, Math.round(width * 0.036), Math.round(contentWidth * 0.4), '#ffffff', 700);
-      const qualMeta = await sharp(qualText).metadata();
-      const qualW = Number(qualMeta.width || 160) + 40;
-      const qualH = Number(qualMeta.height || 44) + 20;
-      const qualLeft = margin + priceW + 24;
-      if (qualLeft + qualW <= width - margin) {
-        const qualTop = cursor + priceH - qualH - Math.round(priceH * 0.2);
-        composites.push({ input: pill(qualW, qualH, '#ffffff', 0.2), top: Math.round(qualTop), left: qualLeft });
-        composites.push(await layer(qualText, qualLeft + 20, qualTop + 10));
-      }
+      const qual = await type('qualifier', copy.qualifier, width * 0.036, Math.round(contentWidth * 0.3), '#ffffff', 700);
+      const qw = oldLayout?.qualifierPill?.width || qual.width + 40;
+      const qh = oldLayout?.qualifierPill?.height || qual.height + 20;
+      const qleft = margin + Math.round(contentWidth * 0.65);
+      if (qleft + qw > width - margin) throw new Error('poster_copy_does_not_fit_qualifier');
+      const qtop = cursor + price.height - qh;
+      await put('qualifierPill', pill(qw, qh, '#ffffff', 0.2), qleft, qtop);
+      await put('qualifier', qual.data, qleft + 20, qtop + 10, Math.round(contentWidth * 0.3), qual.height);
     }
     cursor -= gap;
   }
-  const titleText = await textLayer(title, font, Math.round(width * 0.074 * revision.titleScale), contentWidth, '#ffffff', 800);
-  const titleMeta = await sharp(titleText).metadata();
-  // With little copy the title sits in the lower third rather than on the very bottom edge.
+  const title = await type('title', state.title, width * 0.074 * state.titleScale, contentWidth, '#ffffff', 800);
   const titleBottom = Math.min(cursor, Math.round(height * 0.8));
-  const titleTop = Math.max(safe.top + 100, Math.round(titleBottom - Number(titleMeta.height || 130)));
-  composites.push({ input: titleText, top: titleTop, left: margin });
-
+  const titleTop = Math.round(titleBottom - title.height);
+  if (titleTop < safe.top + 100) throw new Error('poster_copy_does_not_fit_title');
+  await put('title', title.data, margin, titleTop, contentWidth, title.height);
+  if (oldLayout && Object.keys(oldLayout).some(role => !layout[role])) throw new Error('poster_layout_removal_requires_confirmation');
+  const renderedState = { ...state, palette, layout };
+  options.onManifest?.(renderedState);
   return sharp(base).composite(composites).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
@@ -241,25 +242,47 @@ async function runOne(accessCode, mediaEnv = process.env) {
   if (!job?.id) return { ok: true, claimed: false };
   try {
     const inputs = Array.isArray(job.input_files) ? job.input_files : [];
-    const main = inputs.find((item) => item.role === 'main');
     let result;
     let fileName;
     let contentType;
     let artifactMeta = {};
     let videoVersions = [];
     if (job.workflow_mode === 'image_poster') {
-      let source;
-      if (main?.path) {
-        await heartbeat(accessCode, job.id, '云端正在下载主视觉', 18);
-        source = await posterSource(main, job.id);
-      } else {
-        await heartbeat(accessCode, job.id, '云端正在用 GPT 生成主视觉', 18);
-        const generated = await generateOpenAiImage({ prompt: posterGenerationPrompt(job), size: posterPlacement(currentPosterBrief(job.brief)).generate, env: mediaEnv });
-        source = generated.data;
-        artifactMeta = { generated_background: true, image_provider: generated.provider, image_model: generated.model, source_sha256: generated.sha256 };
-      }
+      const parent = job.parent_job_id ? await rpc('video_agent_get_job', { p_access: accessCode, p_job_id: job.parent_job_id }) : null;
+      await heartbeat(accessCode, job.id, '云端正在核对海报文字与原图版本', 18);
+      const prepared = await preparePosterSource({
+        job, parent,
+        load: (objectPath, kind) => download(kind === 'result' ? RESULT_BUCKET : INPUT_BUCKET, objectPath),
+        loadMain: item => posterSource(item, job.id),
+        generate: async ({ state, backgroundInstruction, referenceImages }) => {
+          const effectiveJob = { ...job, brief: posterStateBrief(state, backgroundInstruction) };
+          return generateOpenAiImage({
+            prompt: posterGenerationPrompt(effectiveJob) + referenceImages.map((image, index) => image.role === 'customer_subject' ? ` Image ${index + 1} is the customer subject: preserve identity.` : ` Image ${index + 1} is a style reference only: never copy text, claims, prices, brand or subject.`).join(''),
+            size: state.placement.generate, referenceImages, env: mediaEnv,
+          });
+        },
+      });
       await heartbeat(accessCode, job.id, '云端正在生成商业海报', 52);
-      result = await renderPoster(job, source);
+      let renderedState;
+      result = await renderPoster(job, prepared.source, { state: prepared.state, onManifest: value => { renderedState = value; } });
+      // A private, job-scoped clean source is persisted before completion. It
+      // is metadata, not an extra accepted output or advertising approval.
+      const sourcePath = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: 'poster-edit-source.png' });
+      const sourceBytes = await sharp(prepared.source).png().toBuffer();
+      await upload(RESULT_BUCKET, sourcePath, sourceBytes, 'image/png');
+      artifactMeta = {
+        generated_background: Boolean(prepared.generation),
+        image_provider: prepared.generation?.provider || null,
+        image_model: prepared.generation?.model || null,
+        source_sha256: crypto.createHash('sha256').update(sourceBytes).digest('hex'),
+        poster_edit: {
+          schema: 'poster-edit-v1', job_id: job.id, parent_job_id: job.parent_job_id || null, version: Number(job.version_number || 1),
+          state: renderedState,
+          source: { path: sourcePath, sha256: crypto.createHash('sha256').update(sourceBytes).digest('hex'), type: 'image/png' },
+          reference_count: prepared.referenceCount,
+          generation_calls: prepared.generation ? 1 : 0, cost: null,
+        },
+      };
       fileName = 'poster-cloud.jpg';
       contentType = 'image/jpeg';
     } else {

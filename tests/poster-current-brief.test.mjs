@@ -37,8 +37,8 @@ test('Traditional restriction alias and current revision are preserved', () => {
 
 test('actual worker imports and calls the tested helper, no duplicate legacy implementation', () => {
   const worker = readFileSync(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
-  assert.match(worker, /import \{ currentPosterBrief, posterGenerationPrompt \} from '.\/_poster-current-brief.mjs'/);
-  assert.match(worker, /prompt: posterGenerationPrompt\(job\)/);
+  assert.match(worker, /import \{ posterGenerationPrompt \} from '.\/_poster-current-brief.mjs'/);
+  assert.match(worker, /prompt: posterGenerationPrompt\(effectiveJob\)/);
   assert.doesNotMatch(worker, /function posterGenerationPrompt/);
 });
 
@@ -55,9 +55,12 @@ test('actual generation size and render placement/revision use the same current 
   assert.equal(posterPlacement(request).key, 'feed');
   assert.equal(parsePosterRevision(request).background, '');
   const worker = readFileSync(new URL('../api/video-worker.mjs', import.meta.url), 'utf8');
-  assert.match(worker, /const brief = currentPosterBrief\(job.brief\);\s*const placement = posterPlacement\(brief\)/);
-  assert.match(worker, /size: posterPlacement\(currentPosterBrief\(job.brief\)\).generate/);
-  assert.match(worker, /const revision = parsePosterRevision\(brief\)/);
+  const { resolvePosterState, posterStateBrief } = await import('../api/_poster-revision.mjs');
+  const plan = resolvePosterState({ brief: brief.replaceAll('\n', '\\n') });
+  assert.equal(plan.state.placement.key, 'feed');
+  assert.match(posterGenerationPrompt({ brief: posterStateBrief(plan.state) }), /香港繁體中文/);
+  assert.match(worker, /size: state.placement.generate/);
+  assert.match(worker, /preparePosterSource/);
 });
 
 test('a restricted body part does not override an explicitly allowed face/service subject', () => {
