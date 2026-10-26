@@ -7,6 +7,7 @@ import { parsePosterFacts, posterPlacement } from './_poster-copy.mjs';
 const MARKER = '【基于上一版继续优化】';
 const sha = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const normalize = (value) => String(value || '').replaceAll('\\n', '\n');
+const englishLanguage = value => !/双语|雙語|bilingual|中英/iu.test(value) && /(?:^en(?:[-_][a-z]{2,})?$|english|英语|英語|英文)/iu.test(value);
 const fail = (code) => { throw new Error(`poster_${code}`); };
 const field = (text, labels, fallback = '') => {
   for (const label of labels) {
@@ -21,7 +22,7 @@ export function initialPosterState(job) {
   const request = currentPosterBrief(job.brief).split(MARKER)[0];
   const language = field(request, ['海报语言', '海報語言', '语言', '語言']);
   const englishRequired = /全部英文|全英文|所有[^\n。]*英文|only\s+english|all\s+(?:text\s+in\s+)?english/iu.test(field(request, ['需求背景']));
-  if (englishRequired && language && !/^(en|english|英语|英語|英文)/iu.test(language)) fail('language_conflict_en_confirm_copy');
+  if (englishRequired && language && !englishLanguage(language)) fail('language_conflict_en_confirm_copy');
   return {
     schema: 'poster-edit-v1',
     title: field(request, ['主标题', '主標題'], job.project_name || ''),
@@ -141,7 +142,7 @@ export function validatePosterState(state) {
   }
   if (!state.title.trim()) fail('title_required');
   if (parsePosterFacts(state.facts, { strict: true }).lines.length > 3) fail('copy_too_many_fact_lines');
-  if (/^(en|english|英语|英語|英文)/iu.test(state.language) && [state.title, state.brand, state.facts, state.cta].some(text => /\p{Script=Han}/u.test(text))) fail('language_conflict_en_confirm_copy');
+  if (englishLanguage(state.language) && [state.title, state.brand, state.facts, state.cta].some(text => /\p{Script=Han}/u.test(text))) fail('language_conflict_en_confirm_copy');
   return state;
 }
 

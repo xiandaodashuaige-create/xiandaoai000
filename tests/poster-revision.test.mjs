@@ -201,3 +201,10 @@ test('explicit preserved layout cannot silently be discarded by ratio or font ch
   for (const request of ['标题放大，保留布局', '比例改为1:1，保持布局']) assert.throws(() => applyPosterRevision(state, request), /conflicting_layout_instructions/);
   assert.equal(applyPosterRevision(state, '比例改为1:1，保留照片').state.layout, null);
 });
+
+
+test('confirmed English language aliases cannot bypass all-visible-copy checks', () => {
+  for (const language of ['全英文', '全部英文', 'Singapore English', 'en-SG']) {
+    assert.throws(() => validatePosterState(initialPosterState({ brief: `主标题：Unwind\n行动引导：WhatsApp 咨询\n海报语言：${language}` })), /language_conflict_en/);
+  }
+});
