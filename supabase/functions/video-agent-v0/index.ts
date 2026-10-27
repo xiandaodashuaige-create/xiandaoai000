@@ -137,6 +137,20 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, job: data });
     }
 
+    if (action === "provider_list_accepted_images") {
+      const cursor = body.cursor;
+      if (cursor !== undefined && (!cursor || typeof cursor !== "object" ||
+          typeof cursor.acceptedAt !== "string" || !Number.isFinite(Date.parse(cursor.acceptedAt)) ||
+          typeof cursor.jobId !== "string")) return json({ error: "invalid_library_cursor" }, 400);
+      const { data, error } = await sb.rpc("video_agent_provider_list_accepted_images", {
+        p_access: access, p_tenant_id: String(body.tenant_id || ""),
+        p_external_project_id: String(body.project_id || ""),
+        p_before_at: cursor?.acceptedAt ?? null, p_before_id: cursor?.jobId ?? null,
+      });
+      if (error) return json({ error: "library_read_unavailable" }, 503);
+      return json({ ok: true, jobs: data || [] });
+    }
+
     if (action === "provider_status") {
       const { data, error } = await sb.rpc("video_agent_provider_get_job", {
         p_access: access,
