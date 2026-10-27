@@ -129,7 +129,10 @@ export async function renderPoster(job, input, options = {}) {
   const state = options.state || resolvePosterState(job).state;
   const { width, height, key } = state.placement;
   const safe = posterSafeZone(height, key);
-  const reference = referenceComposition(state.style, width, height, safe);
+  // A legacy approved layout was rendered without a reference panel. Never
+  // add that panel during an otherwise exact edit of an older saved version.
+  const reference = state.layout && state.referenceRender?.schema !== 'poster-reference-render-v1'
+    ? null : referenceComposition(state.style, width, height, safe);
   const margin = state.layout ? Math.round(width * 0.075) : reference?.left ?? Math.round(width * 0.075);
   const contentWidth = state.layout ? width - margin * 2 : reference?.contentWidth ?? width - margin * 2;
   const copy = parsePosterFacts(state.facts, { strict: true });

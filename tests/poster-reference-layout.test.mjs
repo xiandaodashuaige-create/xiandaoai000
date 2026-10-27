@@ -80,3 +80,16 @@ test('narrow/right reference anchors adapt within the actual canvas and survive 
   const after=await render(applyPosterRevision(before.manifest,'只按钮改深绿色').state);
   assert.deepEqual(after.manifest.layout,before.manifest.layout);
 });
+test('legacy approved manifests do not acquire a new reference panel during a button-only edit',async()=>{
+  const state=initialPosterState({brief:brief(grammar())});
+  state.style='clean and minimal';
+  const before=await render(state);
+  // PR49 stored the reference style but used the original compositor; it had
+  // no referenceRender stamp. Recreate that legacy shape without another engine.
+  const legacy={...before.manifest,style:style(grammar())};
+  const after=await render(applyPosterRevision(legacy,'只按钮改深绿色').state);
+  assert.deepEqual(after.manifest.layout,before.manifest.layout);
+  assert.equal(after.manifest.referenceRender,undefined);
+  const region={left:100,top:500,width:800,height:200};
+  assert.ok((await sharp(before.bytes).extract(region).raw().toBuffer()).equals(await sharp(after.bytes).extract(region).raw().toBuffer()));
+});
