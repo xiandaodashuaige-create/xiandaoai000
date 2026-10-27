@@ -32,6 +32,9 @@ export function initialPosterState(job) {
     language: language || (englishRequired ? 'en' : ''),
     placement: posterPlacement(request),
     purpose: field(request, ['产品/服务', '產品/服務']),
+    // Keep the customer's current scene direction even when the optional
+    // product field is empty. This snapshot survives the worker's round trip.
+    customerRequest: field(request, ['需求背景']),
     creationMethod: field(request, ['制作方式', '製作方式'], '新做一张营销海报'),
     style: field(request, ['风格', '風格']),
     exclusions: field(request, ['不能出现', '不能出現', '禁止出现', '禁止出現']),
@@ -163,6 +166,9 @@ export function resolvePosterState(job, parent = null) {
     const saved = parent.output_files?.find(file => file.poster_edit?.state?.schema === 'poster-edit-v1')?.poster_edit;
     if (!saved?.state && job.revision_scope === 'retry_failed' && parent.parent_job_id) fail('retry_revision_state_unavailable');
     state = saved?.state ? structuredClone(saved.state) : initialPosterState(parent);
+    // Older editable manifests lack this optional field. Recover only from
+    // the same validated parent's current brief, never from project memory.
+    state.customerRequest ??= field(currentPosterBrief(parent.brief).split(MARKER)[0], ['需求背景']);
     if (job.revision_scope !== 'retry_failed') ({ state, replaceBackground, backgroundInstruction } = applyPosterRevision(state, job.revision_prompt));
   } else {
     state = initialPosterState(job);
@@ -175,7 +181,7 @@ export function resolvePosterState(job, parent = null) {
 }
 
 export function posterStateBrief(state, backgroundInstruction = '') {
-  return [`产品/服务：${state.purpose}`, `主标题：${state.title}`, `品牌：${state.brand}`, `核心卖点与准确事实：${state.facts}`, `行动引导：${state.cta}`, `风格：${state.style}`, `不能出现：${state.exclusions}`, `尺寸：${state.placement.width}x${state.placement.height}`, backgroundInstruction ? `${MARKER}\n${backgroundInstruction}` : ''].filter(Boolean).join('\n');
+  return [`产品/服务：${state.purpose}`, `需求背景：${state.customerRequest || ''}`, `主标题：${state.title}`, `品牌：${state.brand}`, `核心卖点与准确事实：${state.facts}`, `行动引导：${state.cta}`, `风格：${state.style}`, `不能出现：${state.exclusions}`, `尺寸：${state.placement.width}x${state.placement.height}`, backgroundInstruction ? `${MARKER}\n${backgroundInstruction}` : ''].filter(Boolean).join('\n');
 }
 
 export function parentPosterSource(job, parent) {
