@@ -1,6 +1,7 @@
+import { ensureFont } from './_font-cache.mjs';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
@@ -17,8 +18,6 @@ export const config = { maxDuration: 800 };
 const WORKER = 'VERCEL-CREATIVE-V2';
 const INPUT_BUCKET = 'video-agent-inputs';
 const RESULT_BUCKET = 'video-agent-results';
-const FONT_PATH = '/tmp/NotoSansSC.ttf';
-const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
 const execFileAsync = promisify(execFile);
 
 function env(name) {
@@ -94,15 +93,6 @@ async function upload(bucket, objectPath, data, contentType) {
 
 function xml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&apos;' })[char]);
-}
-
-async function ensureFont() {
-  try { await access(FONT_PATH); return FONT_PATH; } catch {}
-  await mkdir(path.dirname(FONT_PATH), { recursive: true });
-  const response = await fetch(FONT_URL);
-  if (!response.ok) throw new Error(`font_download_${response.status}`);
-  await writeFile(FONT_PATH, Buffer.from(await response.arrayBuffer()));
-  return FONT_PATH;
 }
 
 async function textLayer(text, fontFile, size, width, color = '#ffffff', weight = 700) {
