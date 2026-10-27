@@ -15,7 +15,8 @@ export function posterGenerationPrompt(job) {
     return match ? match[1].trim() : fallback;
   };
   return buildPosterPrompt({
-    purpose: field('产品/服务'),
+    purpose: field('产品/服务', field('產品/服務')),
+    customerRequest: field('需求背景'),
     style: field('风格', field('風格')),
     title: field('主标题', job.project_name || ''),
     brand: field('品牌'),
