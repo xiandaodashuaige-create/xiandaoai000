@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { posterGenerationPrompt } from '../api/_poster-current-brief.mjs';
 import { buildPosterPrompt } from '../api/_poster-copy.mjs';
-import { initialPosterState, posterStateBrief, preparePosterSource, resolvePosterState } from '../api/_poster-revision.mjs';
+import { initialPosterState, posterStateBrief, preparePosterSource, resolvePosterState, validatePosterState } from '../api/_poster-revision.mjs';
 
 // Sanitized reproduction of the reported job shape; never a live customer job.
 const request = '帮我做个面部骨雕，面对新加坡的广告素材';
@@ -138,4 +138,41 @@ test('edited explicit service fields take priority over an earlier request backg
   assert.match(prompt, /睫毛嫁接/);
   assert.match(prompt, /explicit product\/service field takes priority over the request background/);
   assert.match(prompt, /without overriding confirmed fields/);
+});
+
+
+test('the existing brief limit preserves the whole allowed request including its final service', () => {
+  const state = initialPosterState({ brief });
+  state.customerRequest = 'a'.repeat(8188) + '面部骨雕';
+  assert.equal(state.customerRequest.length, 8192);
+  assert.equal(validatePosterState(state).customerRequest, state.customerRequest);
+  assert.match(posterGenerationPrompt({ brief: posterStateBrief(state) }), /面部骨雕/);
+});
+
+test('an overlong request fails before an image request instead of truncating service direction', async () => {
+  let generationCalls = 0;
+  await assert.rejects(
+    preparePosterSource({
+      job: { brief: brief.replace(request, 'a'.repeat(8189) + '面部骨雕'), input_files: [] },
+      load: () => assert.fail('no input images'),
+      loadMain: () => assert.fail('no input images'),
+      generate: async () => { generationCalls++; return { data: Buffer.from('TEST_ONLY') }; },
+    }),
+    /poster_request_context_invalid/,
+  );
+  assert.equal(generationCalls, 0);
+});
+
+test('non-string saved request context is rejected before prompt serialization', () => {
+  const state = initialPosterState({ brief });
+  for (const value of [42, {}, ['面部骨雕']]) {
+    assert.throws(() => validatePosterState({ ...state, customerRequest: value }), /poster_request_context_invalid/);
+  }
+});
+
+test('missing optional context remains compatible with legacy poster validation', () => {
+  const state = initialPosterState({ brief });
+  delete state.customerRequest;
+  assert.equal(validatePosterState(state), state);
+  assert.doesNotMatch(posterStateBrief(state), /undefined|null/);
 });

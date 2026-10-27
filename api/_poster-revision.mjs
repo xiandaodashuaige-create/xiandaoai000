@@ -140,6 +140,9 @@ export function applyPosterRevision(previous, revision) {
 }
 
 export function validatePosterState(state) {
+  // Match the existing A3 brief bound; never truncate away the requested service.
+  const request = state.customerRequest ?? '';
+  if (typeof request !== 'string' || request.length > 8192) fail('request_context_invalid');
   for (const [key, limit] of [['title', 90], ['brand', 64], ['cta', 90], ['facts', 300]]) {
     if (typeof state[key] !== 'string' || [...state[key]].length > limit) fail(`copy_invalid_${key}`);
   }
