@@ -10,6 +10,7 @@ import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-p
 import { accentFromDominant, parsePosterFacts, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
 import { posterGenerationPrompt } from './_poster-current-brief.mjs';
 import { preparePosterSource, resolvePosterState, posterStateBrief } from './_poster-revision.mjs';
+import { referenceComposition, positionReferenceCopy, referenceBackgroundInstruction } from './_poster-reference-layout.mjs';
 
 export const config = { maxDuration: 800 };
 
@@ -128,13 +129,14 @@ export async function renderPoster(job, input, options = {}) {
   const state = options.state || resolvePosterState(job).state;
   const { width, height, key } = state.placement;
   const safe = posterSafeZone(height, key);
-  const margin = Math.round(width * 0.075);
-  const contentWidth = width - margin * 2;
+  const reference = referenceComposition(state.style, width, height, safe);
+  const margin = state.layout ? Math.round(width * 0.075) : reference?.left ?? Math.round(width * 0.075);
+  const contentWidth = state.layout ? width - margin * 2 : reference?.contentWidth ?? width - margin * 2;
   const copy = parsePosterFacts(state.facts, { strict: true });
   // Freeze the *unlettered* photo and the independently addressable overlay
   // boxes. Revisions never feed a flattened JPEG back into this compositor.
   const base = await sharp(input).resize(width, height, { fit: 'cover', position: 'attention' }).modulate({ brightness: 0.95, saturation: 1.02 }).png().toBuffer();
-  const palette = state.palette || accentFromDominant((await sharp(base).stats()).dominant);
+  const palette = state.palette || reference?.palette || accentFromDominant((await sharp(base).stats()).dominant);
   const accent = palette.accent;
   const onAccent = palette.onAccent;
   const buttonColor = state.buttonColor || accent;
@@ -142,16 +144,17 @@ export async function renderPoster(job, input, options = {}) {
   const onButton = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) > 140 ? '#1a1410' : '#ffffff';
   const oldLayout = state.layout;
   const layout = {};
+  const layerIndices = {};
   const composites = [];
   const pill = (w, h, fill, opacity = 1) => Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="${h / 2}" fill="${fill}" fill-opacity="${opacity}"/></svg>`);
-  async function type(role, text, size, maxWidth, color, weight) {
+  async function type(role, text, size, maxWidth, color, weight, maxHeight = null) {
     const box = oldLayout?.[role];
     const targetWidth = box?.width || maxWidth;
     const minimum = Math.max(20, Math.round(size * 0.65));
     for (let actual = Math.round(size); actual >= minimum; actual -= 2) {
       const data = await textLayer(text, font, actual, targetWidth, color, weight);
       const meta = await sharp(data).metadata();
-      if (!box || (meta.width <= box.width && meta.height <= box.height)) return { data, width: meta.width, height: meta.height };
+      if ((!box || (meta.width <= box.width && meta.height <= box.height)) && (!maxHeight || meta.height <= maxHeight)) return { data, width: meta.width, height: meta.height };
     }
     throw new Error(`poster_copy_does_not_fit_${role}`);
   }
@@ -163,25 +166,28 @@ export async function renderPoster(job, input, options = {}) {
     const box = previous || { left: Math.round(left), top: Math.round(top), width: reservedWidth || meta.width, height: reservedHeight || meta.height };
     if (box.left < 0 || box.top < 0 || box.left + meta.width > width || box.top + meta.height > height || meta.width > box.width || meta.height > box.height) throw new Error(`poster_layout_overflow_${role}`);
     layout[role] = box;
+    layerIndices[role] = composites.length;
     composites.push({ input: data, top: box.top, left: box.left });
   }
   const shade = Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050505" stop-opacity=".16"/><stop offset=".34" stop-color="#050505" stop-opacity=".10"/><stop offset=".62" stop-color="#050505" stop-opacity=".58"/><stop offset="1" stop-color="#050505" stop-opacity=".9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
   composites.push({ input: shade, top: 0, left: 0 });
   if (state.brand) {
+    const brandLeft = Math.round(width * 0.075);
     const brand = await type('brand', state.brand, width * 0.032, width * 0.5, onAccent, 700);
     const bw = oldLayout?.brandPill?.width || brand.width + 48;
     const bh = Math.max(62, brand.height + 20);
-    await put('brandPill', pill(bw, bh, accent), margin, safe.top);
-    await put('brand', brand.data, margin + 24, safe.top + (bh - brand.height) / 2, Math.round(width * 0.5), brand.height);
+    await put('brandPill', pill(bw, bh, accent), brandLeft, safe.top);
+    await put('brand', brand.data, brandLeft + 24, safe.top + (bh - brand.height) / 2, Math.round(width * 0.5), brand.height);
   }
   const gap = Math.round(height * 0.022);
   let cursor = height - safe.bottom;
   if (state.cta) {
     const ctaH = oldLayout?.button?.height || 104;
-    const cta = await type('cta', state.cta, width * 0.043, contentWidth - 152, onButton, 800);
+    const ctaWidth = oldLayout?.button?.width || contentWidth;
+    const cta = await type('cta', state.cta, width * 0.043, ctaWidth - 152, onButton, 800, ctaH - 20);
     if (cta.height > ctaH - 20) throw new Error('poster_copy_does_not_fit_cta');
     cursor -= ctaH;
-    await put('button', pill(contentWidth, ctaH, buttonColor), margin, cursor);
+    await put('button', pill(ctaWidth, ctaH, buttonColor), margin, cursor);
     const icon = Buffer.from(`<svg width="56" height="56" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg"><circle cx="28" cy="28" r="28" fill="${onButton}"/><path fill="${buttonColor}" d="M20 15l5 8-3 3c2 4 4 6 8 8l3-3 8 5v5c-16 1-28-11-27-27z"/></svg>`);
     await put('icon', icon, margin + 28, cursor + (ctaH - 56) / 2);
     await put('cta', cta.data, margin + 108, cursor + (ctaH - cta.height) / 2, contentWidth - 152, ctaH - 20);
@@ -194,7 +200,7 @@ export async function renderPoster(job, input, options = {}) {
     cursor -= gap;
   }
   if (copy.price) {
-    const price = await type('price', copy.price, width * 0.125 * state.priceScale, Math.round(contentWidth * 0.62), accent, 800);
+    const price = await type('price', copy.price, width * 0.125 * state.priceScale, Math.round(contentWidth * 0.62), palette.priceColor || accent, 800);
     cursor -= price.height;
     await put('price', price.data, margin, cursor, Math.round(contentWidth * 0.62), price.height);
     if (copy.qualifier) {
@@ -202,7 +208,7 @@ export async function renderPoster(job, input, options = {}) {
       const qw = oldLayout?.qualifierPill?.width || qual.width + 40;
       const qh = oldLayout?.qualifierPill?.height || qual.height + 20;
       const qleft = margin + Math.round(contentWidth * 0.65);
-      if (qleft + qw > width - margin) throw new Error('poster_copy_does_not_fit_qualifier');
+      if (!oldLayout && qleft + qw > margin + contentWidth) throw new Error('poster_copy_does_not_fit_qualifier');
       const qtop = cursor + price.height - qh;
       await put('qualifierPill', pill(qw, qh, '#ffffff', 0.2), qleft, qtop);
       await put('qualifier', qual.data, qleft + 20, qtop + 10, Math.round(contentWidth * 0.3), qual.height);
@@ -214,8 +220,9 @@ export async function renderPoster(job, input, options = {}) {
   const titleTop = Math.round(titleBottom - title.height);
   if (titleTop < safe.top + 100) throw new Error('poster_copy_does_not_fit_title');
   await put('title', title.data, margin, titleTop, contentWidth, title.height);
+  positionReferenceCopy(layout, composites, layerIndices, reference, height, safe, Boolean(oldLayout));
   if (oldLayout && Object.keys(oldLayout).some(role => !layout[role])) throw new Error('poster_layout_removal_requires_confirmation');
-  const renderedState = { ...state, palette, layout };
+  const renderedState = { ...state, palette, layout, ...(reference ? { referenceRender: reference.manifest } : {}) };
   options.onManifest?.(renderedState);
   return sharp(base).composite(composites).jpeg({ quality: 94, progressive: true, chromaSubsampling: '4:4:4' }).toBuffer();
 }
@@ -257,7 +264,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
         generate: async ({ state, backgroundInstruction, referenceImages }) => {
           const effectiveJob = { ...job, brief: posterStateBrief(state, backgroundInstruction) };
           return generateOpenAiImage({
-            prompt: posterGenerationPrompt(effectiveJob) + referenceImages.map((image, index) => image.role === 'customer_subject' ? ` Image ${index + 1} is the customer subject: preserve identity.` : ` Image ${index + 1} is a style reference only: never copy text, claims, prices, brand or subject.`).join(''),
+            prompt: posterGenerationPrompt(effectiveJob) + referenceBackgroundInstruction(state.style) + referenceImages.map((image, index) => image.role === 'customer_subject' ? ` Image ${index + 1} is the customer subject: preserve identity.` : ` Image ${index + 1} is a style reference only: never copy text, claims, prices, brand or subject.`).join(''),
             size: state.placement.generate, referenceImages, env: mediaEnv,
           });
         },
@@ -391,4 +398,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 }
-

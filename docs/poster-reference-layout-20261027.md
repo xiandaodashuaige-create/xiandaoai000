@@ -1,0 +1,11 @@
+# Reference composition repair — 2026-10-27
+
+Task A3-REFERENCE-SYNTHESIS-20261027, canonical A3 issue839. Owner explicitly requests current requirement recovery, multi-source reference synthesis, and actual reference-aware rendering. This child preserves PR48/49 exact revision/source protections and must be combined with PR50 service-context recovery and the A3 reference/copy consumers by the existing sole C publisher. No independent production publication.
+
+The allowlisted visual-blueprint-v1 suffix already present in the style field now drives actual composition. Headline position/width influence a safe copy group; PRICE_FIRST affects actual role order; palette affects actual brand/button/price pixels. Current explicit colors and saved parent palette/layout take priority. Dark reference colors keep a readable price. Generated backgrounds receive bounded reference copy-space instructions. Raw merchant text/identity is never imported.
+
+Each rendered editable snapshot stores poster-reference-render-v1, a normalized design hash, applied fields and actual layout boxes. Same-version edits preserve those boxes and source bytes. Incomplete geometry is adapted to safe widths/spacing rather than copying a possibly unsafe ad verbatim; public inspiration is not verified performance.
+
+Validation is TEST-ONLY: actual Sharp/JPEG composition, pixel color checks, materially different title/button positions, role-order assertion, canvas bounds and exact unchanged photo pixels on button-only revisions. No model/provider call, customer job mutation, migration or Meta action is part of these tests. The placeholder-color raster is a deterministic regression fixture, not a delivered customer creative.
+
+Production acceptance remains required: same official-homepage login journey, same tenant/project, available reference sources and exact composed design hash -> generated background -> final image -> refresh -> approved revision; inspect facts, service direction, language, exclusions and layout visually. Missing local references must be reported without resetting the100-record/8-analysis limits or fabricating cases. A3 and V3 deployed SHA/alias evidence must both match the approved composition.
