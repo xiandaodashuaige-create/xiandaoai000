@@ -38,3 +38,11 @@ Source delivery, independent exact-head review, source CI, final combined CI and
 production visual acceptance are separate. No main merge, deployment, SQL apply,
 release lease, Meta action or customer image was performed by this child.
 The official-homepage real bone-sculpting image and revision UAT remain required.
+
+Final review repair: the independent exact-d43 reader reproduced a P2 where
+numeric-regex trailing whitespace let 3 D / 3\tD through. Two actual cases
+failed on d43 (24 pass / 2 fail). trimStart instead of trim now preserves
+leading spacing but requires the digit to be adjacent to D. Final six-suite
+106/106 Node/Sharp tests pass, zero skips; this is the final application source.
+The earlier d43 CI201 PASS and independent24 PASS remain historical evidence,
+not approval for this successor. New exact-source review and CI are required.

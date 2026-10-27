@@ -230,3 +230,11 @@ test('day and discount offer wording cannot be mistaken for a dimensional servic
   assert.ok(prompt.includes('3D面部骨雕'));
   assert.doesNotMatch(prompt, /98|3 days|HK\$/);
 });
+
+for (const separated of ['3 D面部骨雕', '3\tD面部骨雕']) {
+  test('a separated D token keeps the prior numeric cleanup contract: ' + JSON.stringify(separated), () => {
+    const prompt = buildPosterPrompt({ customerRequest: separated });
+    assert.ok(!prompt.includes(separated), 'only an adjacent integer+D service token is preserved');
+    assert.match(prompt, /D面部骨雕/);
+  });
+}

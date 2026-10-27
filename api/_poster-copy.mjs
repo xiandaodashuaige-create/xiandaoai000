@@ -48,7 +48,7 @@ export function buildPosterPrompt({ purpose, customerRequest, style, title, bran
   // Printed offers stay in the deterministic text layer. A dimensional
   // service name such as 3D or HIFU4D is scene identity, so keep it intact.
   const noDigits = (value) => String(value || '').replace(/(?:rm|hk\$|s\$|usd|hkd|sgd|\$)?\s*[0-9０-９][0-9０-９.,]*\s*(?:元|令吉|港币|新币|折|%|％|rm|hkd|sgd|usd)?/giu, (match, offset, source) =>
-    /^[0-9０-９]+$/u.test(match.trim()) && /^[dＤｄ](?![a-zＡ-Ｚａ-ｚ])/iu.test(source.slice(offset + match.length)) ? match : ' ',
+    /^[0-9０-９]+$/u.test(match.trimStart()) && /^[dＤｄ](?![a-zＡ-Ｚａ-ｚ])/iu.test(source.slice(offset + match.length)) ? match : ' ',
   ).replace(/\s{2,}/g, ' ').trim();
   const context = [purpose, title].map(noDigits).filter(Boolean).join(' / ');
   return [
