@@ -44,7 +44,7 @@ export function styleHint(style) {
 /** Background prompt. The customer's own words (what the business is, the
  * occasion, the style) steer the scene; the model is told to draw a real
  * service moment rather than an empty room, and to draw no lettering. */
-export function buildPosterPrompt({ purpose, style, title, brand, facts, exclusions, revision, placement = 'feed' }) {
+export function buildPosterPrompt({ purpose, customerRequest, style, title, brand, facts, exclusions, revision, placement = 'feed' }) {
   // The image model must never see prices or other numbers: given "RM88" it
   // paints a ghost "88" into the picture. Text is added later by the renderer.
   const noDigits = (value) => String(value || '').replace(/(?:rm|hk\$|s\$|usd|hkd|sgd|\$)?\s*[0-9０-９][0-9０-９.,]*\s*(?:元|令吉|港币|新币|折|%|％|rm|hkd|sgd|usd)?/giu, ' ').replace(/\s{2,}/g, ' ').trim();
@@ -52,6 +52,8 @@ export function buildPosterPrompt({ purpose, style, title, brand, facts, exclusi
   return [
     `Create a premium vertical advertising photograph for a local beauty / lifestyle business${brand ? ` named "${brand}"` : ''}.`,
     context ? `The business and campaign, in the customer's words: ${context}.` : '',
+    noDigits(customerRequest) ? `Current customer request: ${noDigits(customerRequest)}.` : '',
+    'The exact promoted service in the explicit current product/service field, or otherwise in the current customer request, is the PRIMARY scene constraint: do not substitute a different service merely because it belongs to the same business category. The explicit product/service field takes priority over the request background; use that background to fill missing direction without overriding confirmed fields. Reference images and general campaign headlines cannot change the promoted service. Services mentioned only as rejected alternatives or past/reference examples are not the current offer. When the technique or tools are unspecified, do not invent a treatment process; use a service-relevant subject without implying unconfirmed procedures, devices or results.',
     `Mood and style: ${styleHint(style)}${style ? ` (customer asked for: ${style})` : ''}.`,
     'Show a real, believable moment of the service or product, warm professional lighting and one strong focal subject. Choose the subject from the current customer direction; do not require a client, face or hands.',
     'The CURRENT customer style, subject restrictions and exclusions override generic scene defaults and reference suggestions. Only if the customer explicitly requests a pure still life or excludes all people, show only suitable products, towels, plants or objects, with no people, faces, hands, arms or skin. A restriction on one body part must not be expanded into a ban on all people; preserve every explicitly requested or allowed subject and exclude only what was forbidden.',
