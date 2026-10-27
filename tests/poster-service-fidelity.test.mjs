@@ -176,3 +176,57 @@ test('missing optional context remains compatible with legacy poster validation'
   assert.equal(validatePosterState(state), state);
   assert.doesNotMatch(posterStateBrief(state), /undefined|null/);
 });
+
+for (const service of ['3D面部骨雕', 'HIFU4D紧致', '３Ｄ面部骨雕']) {
+  test('dimensional service identity survives the real state-to-prompt round trip: ' + service, () => {
+    const job = { brief: brief.replace(request, '帮我做' + service + '，面对新加坡，S$98，90分钟') };
+    const state = initialPosterState(job);
+    const prompt = posterGenerationPrompt({ brief: posterStateBrief(state) });
+    assert.ok(state.customerRequest.includes(service));
+    assert.ok(prompt.includes(service), 'the requested service must remain verbatim in the scene prompt');
+    assert.doesNotMatch(prompt, /S\$98|98|90/);
+    assert.equal(state.facts, '98新币｜90分钟');
+  });
+}
+test('an explicit dimensional product stays intact over a generic request', () => {
+  const job = { brief: brief.replace('产品/服务：\n', '产品/服务：3D面部骨雕\n').replace(request, '做面部护理广告') };
+  const state = initialPosterState(job);
+  const prompt = posterGenerationPrompt({ brief: posterStateBrief(state) });
+  assert.equal(state.purpose, '3D面部骨雕');
+  assert.ok(prompt.includes('3D面部骨雕'));
+  assert.match(prompt, /explicit product\/service field takes priority/);
+});
+test('dimensional title and revision direction retain their service while offer digits stay suppressed', () => {
+  const prompt = buildPosterPrompt({
+    title: '3D面部骨雕',
+    revision: '改成HIFU4D紧致场景，价格RM98，90分钟',
+  });
+  assert.ok(prompt.includes('3D面部骨雕'));
+  assert.ok(prompt.includes('HIFU4D紧致'));
+  assert.doesNotMatch(prompt, /RM98|98|90/);
+});
+test('the actual source callback receives the dimensional service without rendering its offer into the source', async () => {
+  const job = { brief: brief.replace(request, '3D面部骨雕，新加坡'), input_files: [], workflow_mode: 'image_poster' };
+  let calls = 0;
+  const prepared = await preparePosterSource({
+    job,
+    load: () => assert.fail('no reference was supplied'),
+    loadMain: () => assert.fail('no main image was supplied'),
+    generate: async ({ state, backgroundInstruction }) => {
+      calls++;
+      const prompt = posterGenerationPrompt({ brief: posterStateBrief(state, backgroundInstruction) });
+      assert.ok(prompt.includes('3D面部骨雕'));
+      assert.doesNotMatch(prompt, /98|90/);
+      return { data: Buffer.from('TEST_ONLY_DIMENSIONAL_SOURCE'), provider: 'test' };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(prepared.state.facts, '98新币｜90分钟');
+  assert.equal(prepared.state.customerRequest, '3D面部骨雕，新加坡');
+});
+
+test('day and discount offer wording cannot be mistaken for a dimensional service', () => {
+  const prompt = buildPosterPrompt({ customerRequest: '3 days special 98Discount HK$98D', title: '3D面部骨雕' });
+  assert.ok(prompt.includes('3D面部骨雕'));
+  assert.doesNotMatch(prompt, /98|3 days|HK\$/);
+});

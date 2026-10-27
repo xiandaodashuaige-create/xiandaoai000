@@ -45,9 +45,11 @@ export function styleHint(style) {
  * occasion, the style) steer the scene; the model is told to draw a real
  * service moment rather than an empty room, and to draw no lettering. */
 export function buildPosterPrompt({ purpose, customerRequest, style, title, brand, facts, exclusions, revision, placement = 'feed' }) {
-  // The image model must never see prices or other numbers: given "RM88" it
-  // paints a ghost "88" into the picture. Text is added later by the renderer.
-  const noDigits = (value) => String(value || '').replace(/(?:rm|hk\$|s\$|usd|hkd|sgd|\$)?\s*[0-9０-９][0-9０-９.,]*\s*(?:元|令吉|港币|新币|折|%|％|rm|hkd|sgd|usd)?/giu, ' ').replace(/\s{2,}/g, ' ').trim();
+  // Printed offers stay in the deterministic text layer. A dimensional
+  // service name such as 3D or HIFU4D is scene identity, so keep it intact.
+  const noDigits = (value) => String(value || '').replace(/(?:rm|hk\$|s\$|usd|hkd|sgd|\$)?\s*[0-9０-９][0-9０-９.,]*\s*(?:元|令吉|港币|新币|折|%|％|rm|hkd|sgd|usd)?/giu, (match, offset, source) =>
+    /^[0-9０-９]+$/u.test(match.trim()) && /^[dＤｄ](?![a-zＡ-Ｚａ-ｚ])/iu.test(source.slice(offset + match.length)) ? match : ' ',
+  ).replace(/\s{2,}/g, ' ').trim();
   const context = [purpose, title].map(noDigits).filter(Boolean).join(' / ');
   return [
     `Create a premium vertical advertising photograph for a local beauty / lifestyle business${brand ? ` named "${brand}"` : ''}.`,
