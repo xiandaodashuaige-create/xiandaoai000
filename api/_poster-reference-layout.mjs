@@ -54,7 +54,7 @@ function colorFamily(color) {
 }
 
 function requestedPaletteColor(style, palette) {
-  const colors = /#[a-f\d]{6}\b|深绿|深綠|dark\s*green|红色?|紅色?|\bred\b|蓝色?|藍色?|\bblue\b|粉色?|\bpink\b|黑色?|\bblack\b|白色?|\bwhite\b/giu;
+  const colors = /#[a-f\d]{6}\b|深绿|深綠|dark\s*green|绿色?|綠色?|\bgreen\b|红色?|紅色?|\bred\b|蓝色?|藍色?|\bblue\b|粉色?|\bpink\b|黑色?|\bblack\b|白色?|\bwhite\b/giu;
   const directives = /(?:不要|不用|别用|不使用|不想要|不想用|禁止|禁用|避免|排除)(?:再)?(?:使用|用|改成|改为|改|换成|选择)?|(?:do\s+not|don't|not|no|avoid|without)(?:\s+(?:to\s+)?(?:use|choose|select|change\s+to))?\b|使用|改成|改为|改為|换成|換成|改|换|換|用|\buse\b|[，,；;。\n]|\bbut\b|但是|但/giu;
   const negative = /^(?:不要|不用|别用|不使用|不想要|不想用|禁止|禁用|避免|排除|do\s+not|don't|not|no|avoid|without)/iu;
   const latest = new Map();
@@ -63,7 +63,7 @@ function requestedPaletteColor(style, palette) {
     let denied=false;
     for (const instruction of style.slice(0,hit.index).matchAll(directives)) denied=negative.test(instruction[0]);
     const token=hit[0];
-    const color=token.startsWith('#') ? token.toLowerCase() : /深绿|深綠|dark/iu.test(token) ? '#006341' : /红|紅|red/iu.test(token) ? '#d32f2f' : /蓝|藍|blue/iu.test(token) ? '#1565c0' : /粉|pink/iu.test(token) ? '#e87aa0' : /黑|black/iu.test(token) ? '#151515' : '#f3f3f3';
+    const color=token.startsWith('#') ? token.toLowerCase() : /深绿|深綠|dark/iu.test(token) ? '#006341' : /绿|綠|green/iu.test(token) ? '#3fbf7f' : /红|紅|red/iu.test(token) ? '#d32f2f' : /蓝|藍|blue/iu.test(token) ? '#1565c0' : /粉|pink/iu.test(token) ? '#e87aa0' : /黑|black/iu.test(token) ? '#151515' : '#f3f3f3';
     const family=token.startsWith('#') ? color : colorFamily(color);
     latest.set(family,denied);
     requests.push({color,family,denied});

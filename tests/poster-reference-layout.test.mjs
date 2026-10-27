@@ -40,6 +40,7 @@ test('the background receives final compositor bounds without merchant facts',as
 });
 for(const [request,color] of [
   ['不要红色，使用蓝色','#1565c0'], ['not red, use blue','#1565c0'],
+  ['不要绿色，使用蓝色','#1565c0'], ['no green, use blue','#1565c0'],
   ['不要#ff0000，使用#0000ff','#0000ff'], ['红色改蓝色','#1565c0'],
   ["don't use red, use blue",'#1565c0'],
 ]) test(`current affirmative color wins over exclusions: ${request}`,()=>{
@@ -171,4 +172,8 @@ test('actual worker sends the final layout envelope and makes exactly one simula
     globalThis.fetch=originalFetch;
     for(const key of keys){if(old[key]===undefined)delete process.env[key];else process.env[key]=old[key];}
   }
+});
+
+test('ordinary green exclusions cannot fall back to a green reference',()=>{
+  for(const request of ['不要绿色','不要綠色','no green']) assert.throws(()=>referenceComposition(request+' '+style(grammar(.2,.08,'#3fbf7f')),1080,1350,{top:55,bottom:55}),/palette_conflict/);
 });
