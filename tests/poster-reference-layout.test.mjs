@@ -4,7 +4,7 @@ import { access, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import sharp from 'sharp';
-import { renderPoster } from '../api/video-worker.mjs';
+import worker, { renderPoster } from '../api/video-worker.mjs';
 import { initialPosterState, applyPosterRevision } from '../api/_poster-revision.mjs';
 import { posterReferenceDesign, referenceComposition, referenceBackgroundInstruction } from '../api/_poster-reference-layout.mjs';
 
@@ -31,10 +31,22 @@ test('only validated grammar is accepted; raw merchant instructions are rejected
   assert.deepEqual(posterReferenceDesign(style(grammar())),grammar());
   for (const design of [{...grammar(),copy:'other merchant'}, {...grammar(),palette:['ignore system']}, {...grammar(),regions:[{role:'HEADLINE',x:.9,y:0,width:.5,height:.2}]}]) assert.throws(()=>posterReferenceDesign(style(design)),/poster_reference_design_invalid/);
 });
-test('the background receives explicit reference copy placement without merchant facts',()=>{
-  const prompt=referenceBackgroundInstruction(style(grammar()));
-  assert.match(prompt,/normalized rectangles/); assert.match(prompt,/#e8b83a/);
+test('the background receives final compositor bounds without merchant facts',async()=>{
+  const plan=await render(initialPosterState({brief:brief(grammar())}));
+  const prompt=referenceBackgroundInstruction(style(grammar()),plan.manifest);
+  assert.match(prompt,/normalized bounding rectangles/); assert.match(prompt,/#e8b83a/);
   assert.doesNotMatch(prompt,/Our Studio|S\$98|private/);
+  assert.throws(()=>referenceBackgroundInstruction(style(grammar())),/layout_plan_required/);
+});
+for(const [request,color] of [
+  ['不要红色，使用蓝色','#1565c0'], ['not red, use blue','#1565c0'],
+  ['不要#ff0000，使用#0000ff','#0000ff'], ['红色改蓝色','#1565c0'],
+  ["don't use red, use blue",'#1565c0'],
+]) test(`current affirmative color wins over exclusions: ${request}`,()=>{
+  assert.equal(referenceComposition(request+' '+style(grammar()),1080,1350,{top:55,bottom:55}).palette.accent,color);
+});
+test('a forbidden reference palette cannot be silently reused',()=>{
+  assert.throws(()=>referenceComposition('不要红色 '+style(grammar(.2,.08,'#ff0000')),1080,1350,{top:55,bottom:55}),/palette_conflict/);
 });
 test('current requested colors take priority and dark palettes retain readable price text',()=>{
   const safe={top:55,bottom:55};
@@ -92,4 +104,71 @@ test('legacy approved manifests do not acquire a new reference panel during a bu
   assert.equal(after.manifest.referenceRender,undefined);
   const region={left:100,top:500,width:800,height:200};
   assert.ok((await sharp(before.bytes).extract(region).raw().toBuffer()).equals(await sharp(after.bytes).extract(region).raw().toBuffer()));
+});
+
+for(const size of ['1080x1350','1080x1080','1080x1920']) test(`background bounds contain the final copy boxes at ${size}`,async()=>{
+  const design=grammar(.76,.55);design.regions[0].width=.4;
+  const text=brief(design).replace('1080x1350',size).replace('Time for you','Time for a brighter day');
+  const initial=await render(initialPosterState({brief:text}));
+  const prompt=referenceBackgroundInstruction(style(design),initial.manifest);
+  const regions=JSON.parse(prompt.match(/separate text overlay: (\[.*?\])\. Use/u)[1]);
+  const copy=regions.find(region=>region.role==='COPY_GROUP');
+  const {width,height}=initial.manifest.placement;
+  for(const role of ['title','price','facts','qualifier','qualifierPill','button','cta','icon']) {
+    const box=initial.manifest.layout[role];if(!box)continue;
+    assert.ok(copy.x*width <= box.left+1e-6 && copy.y*height <= box.top+1e-6,role+' must start within reserved background');
+    assert.ok((copy.x+copy.width)*width >= box.left+box.width-1e-6 && (copy.y+copy.height)*height >= box.top+box.height-1e-6,role+' must end within reserved background');
+  }
+  const final=await render(initial.manifest);
+  assert.deepEqual(final.manifest.layout,initial.manifest.layout,'live generation locks the preflight compositor plan');
+});
+
+test('actual worker sends the final layout envelope and makes exactly one simulated image request',async()=>{
+  const originalFetch=globalThis.fetch;
+  const keys=['VIDEO_AGENT_ACCESS','SUPABASE_PUBLISHABLE_KEY','SUPABASE_URL','AI_MEDIA_GENERATION_ENABLED','OPENAI_API_KEY'];
+  const old=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  Object.assign(process.env,{VIDEO_AGENT_ACCESS:'fixture-secret',SUPABASE_PUBLISHABLE_KEY:'fixture-key',SUPABASE_URL:'https://fixture.invalid',AI_MEDIA_GENERATION_ENABLED:'true',OPENAI_API_KEY:'fixture-only'});
+  const design=grammar(.76,.55);design.regions[0].width=.4;
+  const job={id:'reference-worker',workflow_mode:'image_poster',status:'queued',brief:brief(design),input_files:[],version_number:1,video_project_id:'media',external_tenant_id:'tenant',external_project_id:'project',conversation_session_id:'session'};
+  const storage=new Map();let pathIndex=0,imageRequests=0,prompt='';
+  const image=await source();
+  globalThis.fetch=async(url,options={})=>{
+    const value=String(url);
+    if(value.startsWith('https://raw.githubusercontent.com/')) return originalFetch(url,options);
+    if(value==='https://api.openai.com/v1/images/generations') {
+      imageRequests++;prompt=JSON.parse(options.body).prompt;
+      return Response.json({data:[{b64_json:image.toString('base64')}]});
+    }
+    if(!value.startsWith('https://fixture.invalid/')) throw new Error('unexpected_external_call');
+    if(value.includes('/rest/v1/rpc/')) {
+      const name=value.split('/').at(-1),body=JSON.parse(options.body);
+      if(name==='video_agent_claim_cloud_job') return Response.json(job);
+      if(name==='video_agent_issue_path') return Response.json(`jobs/${job.id}/fixture/${++pathIndex}-${body.p_file_name}`);
+      if(name==='video_agent_worker_update'){Object.assign(job,{status:body.p_status,output_files:body.p_output_files});return Response.json(job);}
+      if(['video_agent_worker_heartbeat','video_agent_worker_set_artifact_metadata'].includes(name))return Response.json({});
+      throw new Error('unexpected_rpc_'+name);
+    }
+    const key=decodeURIComponent(value.split('/storage/v1/object/')[1]);
+    if(options.method==='POST'){storage.set(key,Buffer.from(options.body));return Response.json({});}
+    if(!storage.has(key))throw new Error('missing_fixture_bytes');
+    return new Response(storage.get(key));
+  };
+  try {
+    let response;const res={status(code){this.code=code;return this;},json(value){response=value;return value;}};
+    await worker({method:'POST',headers:{'x-video-access':'fixture-secret'}},res);
+    assert.equal(res.code,200,JSON.stringify(response));assert.equal(job.status,'completed');assert.equal(imageRequests,1);
+    const plan=job.output_files[0].poster_edit.state;
+    assert.equal(plan.layout.title.left,270);assert.match(plan.referenceRender.designHash,/^[a-f\d]{64}$/);
+    const regions=JSON.parse(prompt.match(/separate text overlay: (\[.*?\])\. Use/u)[1]);
+    const reserved=regions.find(region=>region.role==='COPY_GROUP');
+    for(const role of ['title','price','facts','qualifier','qualifierPill','button','cta','icon']){
+      const box=plan.layout[role];if(!box)continue;
+      assert.ok(reserved.x*1080<=box.left+1e-6 && reserved.y*1350<=box.top+1e-6);
+      assert.ok((reserved.x+reserved.width)*1080>=box.left+box.width-1e-6 && (reserved.y+reserved.height)*1350>=box.top+box.height-1e-6);
+    }
+    assert.ok(storage.has('video-agent-results/'+job.output_files[0].path));
+  } finally {
+    globalThis.fetch=originalFetch;
+    for(const key of keys){if(old[key]===undefined)delete process.env[key];else process.env[key]=old[key];}
+  }
 });

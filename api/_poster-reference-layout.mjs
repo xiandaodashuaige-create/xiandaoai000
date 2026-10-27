@@ -41,18 +41,46 @@ function foreground(color) {
   return luminance > 140 ? '#1a1410' : '#ffffff';
 }
 
+function colorFamily(color) {
+  const values = color.slice(1).match(/../g).map(value => Number.parseInt(value,16));
+  const [r,g,b] = values;
+  const max = Math.max(...values), min = Math.min(...values), delta = max-min;
+  if (max < 60) return 'black';
+  if (min > 220) return 'white';
+  if (!delta) return 'neutral';
+  let hue = max===r ? ((g-b)/delta)%6 : max===g ? (b-r)/delta+2 : (r-g)/delta+4;
+  hue=(hue*60+360)%360;
+  return hue<20 || hue>=345 ? 'red' : hue>=180 && hue<265 ? 'blue' : hue>=285 && hue<345 ? 'pink' : hue>=75 && hue<180 ? 'green' : 'other';
+}
+
+function requestedPaletteColor(style, palette) {
+  const colors = /#[a-f\d]{6}\b|深绿|深綠|dark\s*green|红色?|紅色?|\bred\b|蓝色?|藍色?|\bblue\b|粉色?|\bpink\b|黑色?|\bblack\b|白色?|\bwhite\b/giu;
+  const directives = /(?:不要|不用|别用|不使用|不想要|不想用|禁止|禁用|避免|排除)(?:再)?(?:使用|用|改成|改为|改|换成|选择)?|(?:do\s+not|don't|not|no|avoid|without)(?:\s+(?:to\s+)?(?:use|choose|select|change\s+to))?\b|使用|改成|改为|改為|换成|換成|改|换|換|用|\buse\b|[，,；;。\n]|\bbut\b|但是|但/giu;
+  const negative = /^(?:不要|不用|别用|不使用|不想要|不想用|禁止|禁用|避免|排除|do\s+not|don't|not|no|avoid|without)/iu;
+  const latest = new Map();
+  const requests = [];
+  for (const hit of style.matchAll(colors)) {
+    let denied=false;
+    for (const instruction of style.slice(0,hit.index).matchAll(directives)) denied=negative.test(instruction[0]);
+    const token=hit[0];
+    const color=token.startsWith('#') ? token.toLowerCase() : /深绿|深綠|dark/iu.test(token) ? '#006341' : /红|紅|red/iu.test(token) ? '#d32f2f' : /蓝|藍|blue/iu.test(token) ? '#1565c0' : /粉|pink/iu.test(token) ? '#e87aa0' : /黑|black/iu.test(token) ? '#151515' : '#f3f3f3';
+    const family=token.startsWith('#') ? color : colorFamily(color);
+    latest.set(family,denied);
+    requests.push({color,family,denied});
+  }
+  const explicit=requests.findLast(item=>!item.denied && !latest.get(item.family));
+  if (explicit) return explicit.color;
+  const allowed=palette.find(color=>!latest.get(color.toLowerCase()) && !latest.get(colorFamily(color)));
+  if (!allowed) throw new Error('poster_reference_palette_conflict');
+  return allowed;
+}
+
 /** Current explicit palette wins; reference colors are a fallback, never a brand override. */
 export function referenceComposition(style, width, height, safe) {
   const design = posterReferenceDesign(style);
   if (!design) return null;
   const customerStyle = String(style).split('Use this reference only')[0].split(MARKER)[0];
-  const explicitHex = customerStyle.match(/#[a-f\d]{6}\b/iu)?.[0];
-  const explicitColor = [
-    [/深绿|深綠|dark\s*green/iu, '#006341'], [/红|紅|\bred\b/iu, '#d32f2f'],
-    [/蓝|藍|\bblue\b/iu, '#1565c0'], [/粉|\bpink\b/iu, '#e87aa0'],
-    [/黑|\bblack\b/iu, '#151515'], [/白|\bwhite\b/iu, '#f3f3f3'],
-  ].find(([pattern]) => pattern.test(customerStyle))?.[1];
-  const accent = explicitHex || explicitColor || design.palette[0];
+  const accent = requestedPaletteColor(customerStyle,design.palette);
   const anchor = design.regions.find(region => region.role === 'HEADLINE');
   const padding = Math.round(width * 0.075);
   const left = anchor ? Math.round(clamp(anchor.x * width, padding, width * 0.25)) : padding;
@@ -70,11 +98,21 @@ export function referenceComposition(style, width, height, safe) {
   };
 }
 
-export function referenceBackgroundInstruction(style) {
+export function referenceBackgroundInstruction(style, renderPlan) {
   const design = posterReferenceDesign(style);
   if (!design) return '';
-  const regions = design.regions.filter(region => ['HEADLINE', 'PRICE', 'CTA'].includes(region.role));
-  return ` For this request, the analyzed reference's copy placement takes priority over generic bottom-space defaults: keep these normalized rectangles calm, uncluttered and free of faces for the separate text overlay: ${JSON.stringify(regions)}. Use this reference palette as inspiration: ${design.palette.join(', ')}. Current customer facts, explicit brand colors and exclusions take priority. Do not render any letters or numbers.`;
+  const width=renderPlan?.placement?.width, height=renderPlan?.placement?.height;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0 || !renderPlan?.layout?.title || !/^#[a-f\d]{6}$/iu.test(renderPlan?.palette?.accent || '')) throw new Error('poster_reference_layout_plan_required');
+  const groups=[['title','price','facts','qualifier','qualifierPill','button','cta','icon'],['brand','brandPill']];
+  const regions=groups.map((roles,index)=>{
+    const boxes=roles.map(role=>renderPlan.layout[role]).filter(Boolean);
+    if (!boxes.length) return null;
+    if (boxes.some(box=>['left','top','width','height'].some(key=>!Number.isFinite(box[key])) || box.left<0 || box.top<0 || box.width<=0 || box.height<=0 || box.left+box.width>width || box.top+box.height>height)) throw new Error('poster_reference_layout_plan_invalid');
+    const left=Math.max(0,Math.min(...boxes.map(box=>box.left))-16),top=Math.max(0,Math.min(...boxes.map(box=>box.top))-20);
+    const right=Math.min(width,Math.max(...boxes.map(box=>box.left+box.width))+16),bottom=Math.min(height,Math.max(...boxes.map(box=>box.top+box.height))+20);
+    return {role:index===0?'COPY_GROUP':'BRAND',x:left/width,y:top/height,width:(right-left)/width,height:(bottom-top)/height};
+  }).filter(Boolean);
+  return ` For this request the exact final compositor plan overrides generic bottom-space defaults and raw reference positions. Keep these normalized bounding rectangles calm, uncluttered and free of faces for the separate text overlay: ${JSON.stringify(regions)}. Use the confirmed compositor accent ${renderPlan.palette.accent}; excluded colors from any raw reference palette must not be reintroduced. Current customer facts, explicit brand colors and exclusions take priority. Do not render any letters or numbers.`;
 }
 
 /** Move the whole copy group together, preserving safe spacing and exact parent boxes. */

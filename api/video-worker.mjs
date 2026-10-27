@@ -10,7 +10,7 @@ import { generateOpenAiImage, mediaProviderCapabilities } from './_cloud-media-p
 import { accentFromDominant, parsePosterFacts, posterSafeZone, safeErrorCode } from './_poster-copy.mjs';
 import { posterGenerationPrompt } from './_poster-current-brief.mjs';
 import { preparePosterSource, resolvePosterState, posterStateBrief } from './_poster-revision.mjs';
-import { referenceComposition, positionReferenceCopy, referenceBackgroundInstruction } from './_poster-reference-layout.mjs';
+import { posterReferenceDesign, referenceComposition, positionReferenceCopy, referenceBackgroundInstruction } from './_poster-reference-layout.mjs';
 
 export const config = { maxDuration: 800 };
 
@@ -258,6 +258,7 @@ async function runOne(accessCode, mediaEnv = process.env) {
     let artifactMeta = {};
     let videoVersions = [];
     if (job.workflow_mode === 'image_poster') {
+      let plannedRenderState;
       const parent = job.parent_job_id ? await rpc('video_agent_get_job', { p_access: accessCode, p_job_id: job.parent_job_id }) : null;
       await heartbeat(accessCode, job.id, '云端正在核对海报文字与原图版本', 18);
       const prepared = await preparePosterSource({
@@ -265,16 +266,22 @@ async function runOne(accessCode, mediaEnv = process.env) {
         load: (objectPath, kind) => download(kind === 'result' ? RESULT_BUCKET : INPUT_BUCKET, objectPath),
         loadMain: item => posterSource(item, job.id),
         generate: async ({ state, backgroundInstruction, referenceImages }) => {
+          if (posterReferenceDesign(state.style)) {
+            // Use the same fonts/typography/compositor before the paid image
+            // request, then lock this exact layout for the final raster.
+            const placeholder = await sharp({ create: { width:1, height:1, channels:3, background:'#808080' } }).png().toBuffer();
+            await renderPoster(job,placeholder,{state,onManifest:value=>{plannedRenderState=value;}});
+          }
           const effectiveJob = { ...job, brief: posterStateBrief(state, backgroundInstruction) };
           return generateOpenAiImage({
-            prompt: posterGenerationPrompt(effectiveJob) + referenceBackgroundInstruction(state.style) + referenceImages.map((image, index) => image.role === 'customer_subject' ? ` Image ${index + 1} is the customer subject: preserve identity.` : ` Image ${index + 1} is a style reference only: never copy text, claims, prices, brand or subject.`).join(''),
+            prompt: posterGenerationPrompt(effectiveJob) + referenceBackgroundInstruction(state.style,plannedRenderState) + referenceImages.map((image, index) => image.role === 'customer_subject' ? ` Image ${index + 1} is the customer subject: preserve identity.` : ` Image ${index + 1} is a style reference only: never copy text, claims, prices, brand or subject.`).join(''),
             size: state.placement.generate, referenceImages, env: mediaEnv,
           });
         },
       });
       await heartbeat(accessCode, job.id, '云端正在生成商业海报', 52);
       let renderedState;
-      result = await renderPoster(job, prepared.source, { state: prepared.state, onManifest: value => { renderedState = value; } });
+      result = await renderPoster(job, prepared.source, { state: plannedRenderState || prepared.state, onManifest: value => { renderedState = value; } });
       // A private, job-scoped clean source is persisted before completion. It
       // is metadata, not an extra accepted output or advertising approval.
       const sourcePath = await rpc('video_agent_issue_path', { p_access: accessCode, p_job_id: job.id, p_bucket: RESULT_BUCKET, p_file_name: 'poster-edit-source.png' });
