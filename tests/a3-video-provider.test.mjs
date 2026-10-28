@@ -71,8 +71,10 @@ test('allows revision and acceptance actions through the scoped gateway', async 
   process.env.SUPABASE_PUBLISHABLE_KEY = 'publishable-key';
   const actions = [];
   globalThis.fetch = async (_url, options) => {
-    actions.push(JSON.parse(options.body).action);
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const request = JSON.parse(options.body);
+    actions.push(request.action);
+    const job = request.action === 'provider_create_revision' ? { id: 'job-b', parent_job_id: request.parent_job_id, version_number: 2, revision_prompt: request.revision_prompt, revision_scope: request.revision_scope || 'auto', external_tenant_id: request.tenant_id, external_project_id: request.project_id } : undefined;
+    return new Response(JSON.stringify({ ok: true, job }), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   for (const body of [
     { action: 'provider_create_revision', tenant_id: 'tenant-a', project_id: 'project-a', parent_job_id: 'job-a', revision_prompt: '强化前三秒 Hook' },

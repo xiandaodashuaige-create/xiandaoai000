@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { operationLookupScope, readPreparedOperation } from './_prepare-operation-lookup.mjs';
+import { readAcceptedImageLibrary } from './_accepted-image-library.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -6,6 +8,7 @@ const ALLOWED_ACTIONS = new Set([
   'provider_upsert_project', 'provider_init_job', 'provider_status',
   'provider_sign_upload', 'provider_submit_job', 'provider_download_url',
   'provider_create_revision', 'provider_record_feedback', 'provider_accept_job',
+  'provider_list_accepted_images', 'provider_find_operation',
 ]);
 
 const JOB_ACTIONS = new Set([
@@ -41,6 +44,7 @@ export default async function handler(req, res) {
   for (const required of ['tenant_id', 'project_id']) {
     if (!String(req.body?.[required] || '').trim()) return res.status(400).json({ error: `missing_${required}` });
   }
+  if (action === 'provider_find_operation' && !operationLookupScope(req.body)) return res.status(400).json({ error: 'operation_lookup_invalid_scope' });
   if (action === 'provider_upsert_project') {
     for (const required of ['project_name', 'business_type']) {
       if (!String(req.body?.[required] || '').trim()) return res.status(400).json({ error: `missing_${required}` });
@@ -69,12 +73,50 @@ export default async function handler(req, res) {
   const supabaseUrl = process.env.SUPABASE_URL || 'https://ejspsxjeelhsevldmnhl.supabase.co';
   if (!providerAccess || !publishableKey) return res.status(503).json({ error: 'provider_not_configured' });
   try {
+    if (action === 'provider_find_operation') {
+      res.setHeader('Cache-Control', 'private, no-store');
+      try {
+        const result = await readPreparedOperation({
+          url: supabaseUrl + '/functions/v1/video-agent-v0', access: providerAccess, publishableKey,
+        }, req.body);
+        return res.status(200).json(result);
+      } catch { return res.status(503).json({ error: 'operation_lookup_unavailable' }); }
+    }
+    if (action === 'provider_list_accepted_images') {
+      const result = await readAcceptedImageLibrary(async (body) => {
+        const response = await fetch(`${supabaseUrl}/functions/v1/video-agent-v0`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+          headers: { 'Content-Type': 'application/json', apikey: publishableKey, 'x-video-access': providerAccess },
+          body: JSON.stringify(body),
+        });
+        const text = await response.text();
+        if (!response.ok || text.length > 512 * 1024) throw new Error('library_read_unavailable');
+        return JSON.parse(text);
+      }, String(req.body.tenant_id), String(req.body.project_id), req.body.cursor);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(200).json(result);
+    }
     const response = await fetch(`${supabaseUrl}/functions/v1/video-agent-v0`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: publishableKey, 'x-video-access': providerAccess },
       body: JSON.stringify(req.body),
     });
     const text = await response.text();
+    if (action === 'provider_create_revision' && response.ok) {
+      let returned;
+      try { returned = JSON.parse(text)?.job; } catch { /* rejected below */ }
+      // The existing RPC is idempotent per parent, not per revision text.
+      // A second, different request can return an old child. Never label it
+      // as the newly requested correction or silently enqueue another job.
+      if (!returned?.id || !Number.isInteger(returned.version_number) || returned.version_number < 2 || returned.parent_job_id !== String(req.body.parent_job_id) ||
+          String(returned.revision_prompt || '').trim() !== String(req.body.revision_prompt).trim() ||
+          String(returned.revision_scope || 'auto') !== String(req.body.revision_scope || 'auto') ||
+          returned.external_tenant_id !== String(req.body.tenant_id) ||
+          returned.external_project_id !== String(req.body.project_id)) {
+        return res.status(409).json({ error: 'revision_parent_conflict_use_latest_version' });
+      }
+    }
     res.status(response.status);
     res.setHeader('Content-Type', response.headers.get('content-type') || 'application/json; charset=utf-8');
     return res.send(text);
