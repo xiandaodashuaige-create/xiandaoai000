@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { readAcceptedImageLibrary } from './_accepted-image-library.mjs';
 
 export const config = { maxDuration: 300 };
 
@@ -6,6 +7,7 @@ const ALLOWED_ACTIONS = new Set([
   'provider_upsert_project', 'provider_init_job', 'provider_status',
   'provider_sign_upload', 'provider_submit_job', 'provider_download_url',
   'provider_create_revision', 'provider_record_feedback', 'provider_accept_job',
+  'provider_list_accepted_images',
 ]);
 
 const JOB_ACTIONS = new Set([
@@ -69,6 +71,21 @@ export default async function handler(req, res) {
   const supabaseUrl = process.env.SUPABASE_URL || 'https://ejspsxjeelhsevldmnhl.supabase.co';
   if (!providerAccess || !publishableKey) return res.status(503).json({ error: 'provider_not_configured' });
   try {
+    if (action === 'provider_list_accepted_images') {
+      const result = await readAcceptedImageLibrary(async (body) => {
+        const response = await fetch(`${supabaseUrl}/functions/v1/video-agent-v0`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+          headers: { 'Content-Type': 'application/json', apikey: publishableKey, 'x-video-access': providerAccess },
+          body: JSON.stringify(body),
+        });
+        const text = await response.text();
+        if (!response.ok || text.length > 512 * 1024) throw new Error('library_read_unavailable');
+        return JSON.parse(text);
+      }, String(req.body.tenant_id), String(req.body.project_id), req.body.cursor);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(200).json(result);
+    }
     const response = await fetch(`${supabaseUrl}/functions/v1/video-agent-v0`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: publishableKey, 'x-video-access': providerAccess },
