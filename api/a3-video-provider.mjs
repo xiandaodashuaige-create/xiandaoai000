@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { operationLookupScope, readPreparedOperation } from './_prepare-operation-lookup.mjs';
 import { readAcceptedImageLibrary } from './_accepted-image-library.mjs';
 
 export const config = { maxDuration: 300 };
@@ -7,7 +8,7 @@ const ALLOWED_ACTIONS = new Set([
   'provider_upsert_project', 'provider_init_job', 'provider_status',
   'provider_sign_upload', 'provider_submit_job', 'provider_download_url',
   'provider_create_revision', 'provider_record_feedback', 'provider_accept_job',
-  'provider_list_accepted_images',
+  'provider_list_accepted_images', 'provider_find_operation',
 ]);
 
 const JOB_ACTIONS = new Set([
@@ -43,6 +44,7 @@ export default async function handler(req, res) {
   for (const required of ['tenant_id', 'project_id']) {
     if (!String(req.body?.[required] || '').trim()) return res.status(400).json({ error: `missing_${required}` });
   }
+  if (action === 'provider_find_operation' && !operationLookupScope(req.body)) return res.status(400).json({ error: 'operation_lookup_invalid_scope' });
   if (action === 'provider_upsert_project') {
     for (const required of ['project_name', 'business_type']) {
       if (!String(req.body?.[required] || '').trim()) return res.status(400).json({ error: `missing_${required}` });
@@ -71,6 +73,15 @@ export default async function handler(req, res) {
   const supabaseUrl = process.env.SUPABASE_URL || 'https://ejspsxjeelhsevldmnhl.supabase.co';
   if (!providerAccess || !publishableKey) return res.status(503).json({ error: 'provider_not_configured' });
   try {
+    if (action === 'provider_find_operation') {
+      res.setHeader('Cache-Control', 'private, no-store');
+      try {
+        const result = await readPreparedOperation({
+          url: supabaseUrl + '/functions/v1/video-agent-v0', access: providerAccess, publishableKey,
+        }, req.body);
+        return res.status(200).json(result);
+      } catch { return res.status(503).json({ error: 'operation_lookup_unavailable' }); }
+    }
     if (action === 'provider_list_accepted_images') {
       const result = await readAcceptedImageLibrary(async (body) => {
         const response = await fetch(`${supabaseUrl}/functions/v1/video-agent-v0`, {

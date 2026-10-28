@@ -151,6 +151,19 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, jobs: data || [] });
     }
 
+    if (action === "provider_find_operation") {
+      const ids = ["tenant_id", "project_id", "conversation_session_id", "correlation_id", "idempotency_key"];
+      if (!ids.every((key) => typeof body[key] === "string" && /^[^\s\u0000-\u001f\u007f]{1,128}$/u.test(body[key])) ||
+          !/^vpr1_[a-f0-9]{64}$/u.test(body.idempotency_key)) return json({ error: "operation_lookup_invalid_scope" }, 400);
+      const { data, error } = await sb.rpc("video_agent_provider_find_operation", {
+        p_access: access, p_tenant_id: body.tenant_id, p_external_project_id: body.project_id,
+        p_conversation_session_id: body.conversation_session_id, p_correlation_id: body.correlation_id,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ error: "operation_lookup_unavailable" }, 503);
+      return json({ ok: true, job: data });
+    }
+
     if (action === "provider_status") {
       const { data, error } = await sb.rpc("video_agent_provider_get_job", {
         p_access: access,
