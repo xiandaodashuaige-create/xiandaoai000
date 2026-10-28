@@ -1,5 +1,6 @@
+import { ensureFont } from './_font-cache.mjs';
 import { spawn } from 'node:child_process';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
 import { synthesizeVoiceover, voiceFor, fitSecondsToVoice, isEnglishJob, createGatewaySynthesizer, gatewaySpeechConfigured } from './_cloud-tts.mjs';
@@ -19,8 +20,6 @@ const LOUDNESS = { I: -16, TP: -1.5, LRA: 11 };
 const FPS = 30; // local worker renders 30fps
 const SEGMENT_SECONDS = 5;
 const MIN_VIDEO_KBPS = 800;
-const FONT_PATH = '/tmp/NotoSansSC.ttf';
-const FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf';
 
 function run(args, cwd) {
   return new Promise((resolve, reject) => {
@@ -138,14 +137,6 @@ export function selectSceneSources(inputs) {
   if (!visuals.length) return [];
   const pick = (pool, index = 0) => pool[index % Math.max(1, pool.length)] || visuals[index % visuals.length];
   return [pick(hook), pick(proof, 0), pick(proof, 1), pick(proof, 2), pick(cta)].filter(Boolean);
-}
-
-async function ensureFont() {
-  try { await access(FONT_PATH); return FONT_PATH; } catch {}
-  const response = await fetch(FONT_URL);
-  if (!response.ok) throw new Error(`font_download_${response.status}`);
-  await writeFile(FONT_PATH, Buffer.from(await response.arrayBuffer()));
-  return FONT_PATH;
 }
 
 function textImage(text, fontFile, width, fontSize, color, weight = 700, align = 'left') {
