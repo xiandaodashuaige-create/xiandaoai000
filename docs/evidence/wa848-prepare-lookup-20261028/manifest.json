@@ -1,0 +1,55 @@
+{
+  "base": "cef9b8cccc09c30a35ffb590b22080e40aa5df55",
+  "preserved_source": "9522de3ff3879cb0529eeb06d4621d9180635351",
+  "source_sha256": {
+    "api/_prepare-operation-lookup.mjs": "2f481f4bdb4cbe70da4be045d55573fa9552b64b460ca2e6ec50f99b0a5f39b6",
+    "api/a3-video-provider.mjs": "96e0d23ab92567b18acbd916530e8cd1d2fc4b83613c495178bffe3a55f92c1d",
+    "supabase/functions/video-agent-v0/index.ts": "aeb125b3b5ad4e94fabc409f29b24b2026915aa49cc5e39a23ab90db179dcbde",
+    "supabase/migrations/20261028003712_video_prepare_operation_lookup.sql": "8965e4b8dfc22fd9fde5b65ca8acaf6e9851c13226a7c056fc8b6e4b2e3f745f",
+    "tests/prepare-operation-lookup-db-setup.sql": "414fa7f134537217c88d0fd99b45c3dcf9ce458f7076c45affb7b2ddc81ac02d",
+    "tests/prepare-operation-lookup-db.sql": "6356181cb993f128f3c964314f6a985f28d0e7af620ea3680324c17c2269e54b",
+    "tests/prepare-operation-lookup.test.mjs": "3ce43cd9ddac47525b1b2cfd55608b6a85f0e80c0b234cf5d238cdeaf2cac621"
+  },
+  "raw_logs": {
+    "node-affected.log": {
+      "sha256": "5d9299f0e1e18f17ffcda565a33f6777878ba2eb80d08b4a406269113869ba8e",
+      "bytes": 2365
+    },
+    "node-all-windows-platform-failure.log": {
+      "sha256": "2c58e689323b07fc21fd403fed00856717932dc50e48d93e99e8ccf125c7774d",
+      "bytes": 22516
+    },
+    "setup.log": {
+      "sha256": "42a21c2b96c34affe7765ec504a043c9a144f81abc3a6d119eaaa4d730226985",
+      "bytes": 117
+    },
+    "migration-first.log": {
+      "sha256": "b3c62602d913e8c6de40bc52ff7213d66369d6339856fa4754a9aa9a417d59af",
+      "bytes": 41
+    },
+    "migration-replay.log": {
+      "sha256": "b3c62602d913e8c6de40bc52ff7213d66369d6339856fa4754a9aa9a417d59af",
+      "bytes": 41
+    },
+    "sql-acceptance.log": {
+      "sha256": "06d419d84988be3c2a07759d699f83b5df640d7148bfae0118448e1b913e4689",
+      "bytes": 373
+    },
+    "pg-stop.log": {
+      "sha256": "dd269ccb43c508088b5a167e486992f22ca81c73e544ef93ea8ed842549ac2d8",
+      "bytes": 50
+    }
+  },
+  "local_validation": {
+    "source": "9522de3ff3879cb0529eeb06d4621d9180635351",
+    "postgres": "18.6",
+    "migration_replay": "PASS",
+    "sql_acceptance": "PASS",
+    "provider": "SYNTHETIC",
+    "database": "newdisposablelocalcluster",
+    "network": "loopbackonly",
+    "node_affected": "31/31PASS",
+    "node_all": "FAIL unchangedcloud-video Windowsconcatpath; preservedraw, pendingLinuxCI",
+    "runner_recovery": "pg_ctl subprocess inheritedpipe stalled despite ready; stopped ownboundPython55064 and continued same owncluster29964 with boundedcommands"
+  }
+}
