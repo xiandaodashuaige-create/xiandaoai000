@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { resolveRuntimeConfig } from "./runtime-config.mjs";
+import { normalizeOperationLookupResult } from "./operation-lookup-result.mjs";
 
 const RUNTIME_CONFIG = resolveRuntimeConfig((name: string) => Deno.env.get(name));
 const INPUT_BUCKET = "video-agent-inputs";
@@ -162,7 +163,7 @@ Deno.serve(async (req: Request) => {
         p_idempotency_key: body.idempotency_key,
       });
       if (error) return json({ error: "operation_lookup_unavailable" }, 503);
-      return json({ ok: true, job: data });
+      return json({ ok: true, job: normalizeOperationLookupResult(data) });
     }
 
     if (action === "provider_status") {
