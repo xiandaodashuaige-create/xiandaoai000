@@ -1,11 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { resolveRuntimeConfig } from "./runtime-config.mjs";
 
-const PUBLIC_KEY = "sb_publishable_41p3q4WMtJH85KjAPu06fw_JY3UO8XQ";
+const RUNTIME_CONFIG = resolveRuntimeConfig((name: string) => Deno.env.get(name));
 const INPUT_BUCKET = "video-agent-inputs";
 const RESULT_BUCKET = "video-agent-results";
 const EXPECTED_DIGEST = Deno.env.get("VIDEO_AGENT_ACCESS_DIGEST") ?? "";
-const CLOUD_WORKER_URL = "https://www.xiandaoai.com/api/video-worker";
+const CLOUD_WORKER_URL = RUNTIME_CONFIG.cloudWorkerUrl;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -49,8 +50,8 @@ Deno.serve(async (req: Request) => {
   const access = req.headers.get("x-video-access") || body.access_code || "";
   if (!access || !(await accessMatches(access))) return json({ error: "unauthorized" }, 401);
 
-  const url = Deno.env.get("SUPABASE_URL") || "https://ejspsxjeelhsevldmnhl.supabase.co";
-  const sb = createClient(url, PUBLIC_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  if (!RUNTIME_CONFIG.configured) return json({ error: "service_not_configured" }, 503);
+  const sb = createClient(RUNTIME_CONFIG.supabaseUrl, RUNTIME_CONFIG.publicKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const action = String(body.action || "");
 
   try {
@@ -216,7 +217,7 @@ Deno.serve(async (req: Request) => {
       });
       if (error) return json({ error: errMsg(error) }, 500);
       if (data?.execution_target === "cloud") {
-        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+        if (CLOUD_WORKER_URL) EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
           method: "POST", headers: { "Content-Type": "application/json", "x-video-access": access },
           body: JSON.stringify({ source: "provider_submit_job", job_id: data.id }),
         }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
@@ -258,7 +259,7 @@ Deno.serve(async (req: Request) => {
       });
       if (error) return json({ error: errMsg(error) }, 500);
       if (data?.execution_target === "cloud") {
-        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+        if (CLOUD_WORKER_URL) EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
           method: "POST", headers: { "Content-Type": "application/json", "x-video-access": access },
           body: JSON.stringify({ source: "provider_create_revision", job_id: data.id }),
         }).catch((error) => console.error("cloud_worker_trigger_failed", errMsg(error))));
@@ -407,7 +408,7 @@ Deno.serve(async (req: Request) => {
       });
       if (error) return json({ error: errMsg(error) }, 500);
       if (data?.execution_target === "cloud") {
-        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+        if (CLOUD_WORKER_URL) EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-video-access": access },
           body: JSON.stringify({ source: "submit_job", job_id: data.id }),
@@ -425,7 +426,7 @@ Deno.serve(async (req: Request) => {
       });
       if (error) return json({ error: errMsg(error) }, 500);
       if (data?.execution_target === "cloud") {
-        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+        if (CLOUD_WORKER_URL) EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-video-access": access },
           body: JSON.stringify({ source: "create_revision", job_id: data.id }),
@@ -443,7 +444,7 @@ Deno.serve(async (req: Request) => {
       });
       if (error) return json({ error: errMsg(error) }, 500);
       if (data?.execution_target === "cloud") {
-        EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
+        if (CLOUD_WORKER_URL) EdgeRuntime.waitUntil(fetch(CLOUD_WORKER_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-video-access": access },
           body: JSON.stringify({ source: "retry_failed_job", job_id: data.id }),
