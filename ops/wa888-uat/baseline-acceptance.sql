@@ -23,7 +23,7 @@ BEGIN
   p_access=>'synthetic-local-only',p_tenant_id=>'wa888-synthetic-tenant',p_external_project_id=>'wa888-synthetic-project',
   p_conversation_session_id=>'wa888-synthetic-session',p_correlation_id=>'wa888-synthetic-correlation',p_idempotency_key=>k,
   p_brief=>'Synthetic draft, never submit',p_workflow_mode=>'image_poster',p_output_count=>1,p_estimated_cost=>0);
- IF j.status <> 'draft' THEN RAISE EXCEPTION 'test job not draft'; END IF;
+ IF j.status <> 'uploading' THEN RAISE EXCEPTION 'test job not unsubmitted'; END IF;
  recovered := public.video_agent_provider_find_operation('synthetic-local-only','wa888-synthetic-tenant','wa888-synthetic-project','wa888-synthetic-session','wa888-synthetic-correlation',k);
  IF recovered.id IS DISTINCT FROM j.id THEN RAISE EXCEPTION 'original operation recovery failed'; END IF;
  recovered := public.video_agent_provider_find_operation('synthetic-local-only','foreign','wa888-synthetic-project','wa888-synthetic-session','wa888-synthetic-correlation',k);

@@ -6,8 +6,10 @@ DO $guard$ BEGIN
  IF to_regclass('public.video_agent_jobs') IS NOT NULL
  OR to_regclass('public.video_agent_projects') IS NOT NULL
  OR to_regclass('public.video_agent_feedback') IS NOT NULL
- OR to_regclass('private.video_agent_config') IS NOT NULL THEN
-  RAISE EXCEPTION 'WA888 bootstrap requires absent video-agent tables';
+ OR to_regclass('private.video_agent_config') IS NOT NULL
+ OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE n.nspname IN ('public','private') AND left(p.proname,12)='video_agent_') THEN
+  RAISE EXCEPTION 'WA888 bootstrap requires absent video-agent tables and functions';
  END IF;
 END $guard$;
 CREATE SCHEMA IF NOT EXISTS private;
