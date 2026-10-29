@@ -131,7 +131,7 @@ begin
   end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_check_access(p_access text)
  RETURNS boolean
@@ -144,7 +144,7 @@ AS $function$
       = (select value from private.video_agent_config where key='access_hash'),
     false
   );
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_claim_cloud_job(p_access text, p_worker_id text)
  RETURNS video_agent_jobs
@@ -174,7 +174,7 @@ begin
    returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_claim_next_job(p_access text, p_worker_id text)
  RETURNS video_agent_jobs
@@ -203,14 +203,14 @@ begin
    returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_cloud_fallback(p_access text, p_job_id uuid, p_worker_id text, p_error_message text DEFAULT NULL::text)
  RETURNS video_agent_jobs
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'private'
-AS $function$ declare v public.video_agent_jobs; begin if not public.video_agent_check_access(p_access) then raise exception 'unauthorized' using errcode='28000'; end if; update public.video_agent_jobs set execution_target='local',status='queued',progress=5,stage='云端处理未完成，已自动转交本地工厂',error_message=right(coalesce(p_error_message,'cloud_worker_failed'),900),worker_id=null,claimed_at=null,heartbeat_at=null,updated_at=now() where id=p_job_id and status='processing' and worker_id=p_worker_id returning * into v; if v.id is null then raise exception 'job_not_claimed_by_worker'; end if; return v; end $function$
+AS $function$ declare v public.video_agent_jobs; begin if not public.video_agent_check_access(p_access) then raise exception 'unauthorized' using errcode='28000'; end if; update public.video_agent_jobs set execution_target='local',status='queued',progress=5,stage='云端处理未完成，已自动转交本地工厂',error_message=right(coalesce(p_error_message,'cloud_worker_failed'),900),worker_id=null,claimed_at=null,heartbeat_at=null,updated_at=now() where id=p_job_id and status='processing' and worker_id=p_worker_id returning * into v; if v.id is null then raise exception 'job_not_claimed_by_worker'; end if; return v; end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_create_job(p_access text, p_project_name text, p_brief text, p_output_count integer DEFAULT 1)
  RETURNS video_agent_jobs
@@ -228,7 +228,7 @@ begin
   values(trim(p_project_name),trim(p_brief),greatest(1,least(3,coalesce(p_output_count,1))),'uploading',2,'等待素材上传')
   returning * into v;
   return v;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_create_project(p_access text, p_project_name text, p_client_name text DEFAULT NULL::text, p_business_type text DEFAULT NULL::text, p_business_summary text DEFAULT NULL::text, p_target_audience text DEFAULT NULL::text, p_offer_facts text DEFAULT NULL::text, p_cta text DEFAULT NULL::text, p_default_language text DEFAULT '普通话'::text, p_must_include text DEFAULT NULL::text, p_must_exclude text DEFAULT NULL::text)
  RETURNS video_agent_projects
@@ -256,7 +256,7 @@ begin
   ) returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_create_project_job(p_access text, p_video_project_id uuid, p_project_name text, p_brief text, p_output_count integer DEFAULT 1, p_workflow_mode text DEFAULT 'remix'::text)
  RETURNS video_agent_jobs
@@ -306,7 +306,7 @@ begin
   ) returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_create_revision(p_access text, p_parent_job_id uuid, p_revision_prompt text, p_revision_scope text DEFAULT 'auto'::text)
  RETURNS video_agent_jobs
@@ -370,7 +370,7 @@ begin
   end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_get_job(p_access text, p_job_id uuid)
  RETURNS video_agent_jobs
@@ -384,7 +384,7 @@ begin
   select * into v from public.video_agent_jobs where id=p_job_id;
   if v.id is null then raise exception 'job_not_found'; end if;
   return v;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_get_project(p_access text, p_project_id uuid)
  RETURNS video_agent_projects
@@ -401,7 +401,7 @@ begin
   if v.id is null then raise exception 'project_not_found'; end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_issue_path(p_access text, p_job_id uuid, p_bucket text, p_file_name text)
  RETURNS text
@@ -422,7 +422,7 @@ begin
   safe_name := left(regexp_replace(coalesce(p_file_name,'file'),'[^A-Za-z0-9._-]+','_','g'),120);
   if safe_name='' then safe_name:='file'; end if;
   return 'jobs/'||p_job_id::text||'/'||sig||'/'||gen_random_uuid()::text||'-'||safe_name;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_list_jobs(p_access text)
  RETURNS SETOF video_agent_jobs
@@ -433,7 +433,7 @@ AS $function$
 begin
   if not public.video_agent_check_access(p_access) then raise exception 'unauthorized' using errcode='28000'; end if;
   return query select * from public.video_agent_jobs order by created_at desc limit 30;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_list_project_feedback(p_access text, p_video_project_id uuid, p_limit integer DEFAULT 30)
  RETURNS SETOF video_agent_feedback
@@ -449,7 +449,7 @@ begin
     where video_project_id=p_video_project_id
     order by created_at desc limit greatest(1,least(100,coalesce(p_limit,30)));
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_list_project_jobs(p_access text, p_video_project_id uuid)
  RETURNS SETOF video_agent_jobs
@@ -466,7 +466,7 @@ begin
     where video_project_id=p_video_project_id
     order by created_at desc limit 30;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_list_projects(p_access text)
  RETURNS SETOF video_agent_projects
@@ -483,7 +483,7 @@ begin
     where status='active'
     order by updated_at desc, created_at desc;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_provider_create_job(p_access text, p_tenant_id text, p_external_project_id text, p_conversation_session_id text, p_correlation_id text, p_idempotency_key text, p_brief text, p_workflow_mode text DEFAULT 'ai_hybrid'::text, p_output_count integer DEFAULT 1, p_provider text DEFAULT NULL::text, p_model text DEFAULT NULL::text, p_estimated_cost numeric DEFAULT NULL::numeric)
  RETURNS video_agent_jobs
@@ -537,7 +537,7 @@ begin
   ) returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_provider_get_job(p_access text, p_tenant_id text, p_external_project_id text, p_job_id uuid)
  RETURNS video_agent_jobs
@@ -553,7 +553,7 @@ begin
   if v.id is null then raise exception 'job_not_found_in_tenant'; end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_provider_upsert_project(p_access text, p_tenant_id text, p_external_project_id text, p_project_name text, p_client_name text DEFAULT NULL::text, p_business_type text DEFAULT NULL::text, p_business_summary text DEFAULT NULL::text, p_target_audience text DEFAULT NULL::text, p_offer_facts text DEFAULT NULL::text, p_cta text DEFAULT NULL::text, p_default_language text DEFAULT '普通话'::text, p_must_include text DEFAULT NULL::text, p_must_exclude text DEFAULT NULL::text)
  RETURNS video_agent_projects
@@ -590,7 +590,7 @@ begin
   returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_record_feedback(p_access text, p_video_project_id uuid, p_job_id uuid DEFAULT NULL::uuid, p_actor_id text DEFAULT 'employee'::text, p_event_type text DEFAULT 'operation'::text, p_content text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb)
  RETURNS video_agent_feedback
@@ -633,7 +633,7 @@ begin
   end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_requeue_stale(p_access text, p_stale_minutes integer DEFAULT 30)
  RETURNS integer
@@ -663,7 +663,7 @@ begin
   select count(*) into n from stale;
 
   return n;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_route_new_job()
  RETURNS trigger
@@ -676,7 +676,7 @@ begin
   end if;
   return new;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_submit_job(p_access text, p_job_id uuid, p_input_files jsonb)
  RETURNS video_agent_jobs
@@ -712,7 +712,7 @@ begin
     where id=p_job_id returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_update_project(p_access text, p_project_id uuid, p_project_name text, p_client_name text DEFAULT NULL::text, p_business_type text DEFAULT NULL::text, p_business_summary text DEFAULT NULL::text, p_target_audience text DEFAULT NULL::text, p_offer_facts text DEFAULT NULL::text, p_cta text DEFAULT NULL::text, p_default_language text DEFAULT '普通话'::text, p_must_include text DEFAULT NULL::text, p_must_exclude text DEFAULT NULL::text)
  RETURNS video_agent_projects
@@ -745,7 +745,7 @@ begin
   if v.id is null then raise exception 'project_not_found'; end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_valid_storage_path(p_bucket text, p_name text)
  RETURNS boolean
@@ -767,7 +767,7 @@ begin
   select value into secret from private.video_agent_config where key='storage_hmac_secret';
   expected := encode(extensions.hmac(convert_to(jid::text || ':' || p_bucket,'UTF8'), convert_to(secret,'UTF8'),'sha256'),'hex');
   return parts[3]=expected;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_worker_checkpoint_asset(p_access text, p_job_id uuid, p_worker_id text, p_asset jsonb)
  RETURNS video_agent_jobs
@@ -812,7 +812,7 @@ begin
     where id=p_job_id returning * into v;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_worker_heartbeat(p_access text, p_job_id uuid, p_worker_id text, p_stage text DEFAULT NULL::text, p_progress integer DEFAULT NULL::integer)
  RETURNS video_agent_jobs
@@ -833,7 +833,7 @@ begin
    returning * into v;
 
   return v;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_worker_set_artifact_metadata(p_access text, p_job_id uuid, p_worker_id text, p_output_sha256 text)
  RETURNS video_agent_jobs
@@ -852,7 +852,7 @@ begin
   if v.id is null then raise exception 'job_not_claimed_by_worker'; end if;
   return v;
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.video_agent_worker_update(p_access text, p_job_id uuid, p_status text DEFAULT NULL::text, p_progress integer DEFAULT NULL::integer, p_stage text DEFAULT NULL::text, p_output_files jsonb DEFAULT NULL::jsonb, p_error_message text DEFAULT NULL::text)
  RETURNS video_agent_jobs
@@ -873,7 +873,7 @@ begin
   where id=p_job_id returning * into v;
   if v.id is null then raise exception 'job_not_found'; end if;
   return v;
-end $function$
+end $function$;
 
 CREATE TRIGGER video_agent_route_new_job_trigger BEFORE INSERT ON public.video_agent_jobs FOR EACH ROW EXECUTE FUNCTION video_agent_route_new_job();
 REVOKE ALL ON FUNCTION public.video_agent_accept_job(p_access text, p_job_id uuid) FROM PUBLIC, anon, authenticated, service_role;
