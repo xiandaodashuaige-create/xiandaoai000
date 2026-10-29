@@ -1,0 +1,119 @@
+{
+  "scope": "HOSTED_EDGE_V2_READONLY_HTTP_SUBSET",
+  "time": "2026-10-29T03:18:32.443966+00:00",
+  "source": "f4dcea49d7b4fd53b642361052bafdba9547d45a",
+  "project": "ugqqaixpligbancucwdd",
+  "edge_version": 2,
+  "checks": [
+    {
+      "name": "GET rejected",
+      "status": 405,
+      "expected": 405,
+      "pass": true,
+      "response_sha256": "48ceae43089b9c26f0b2e5e53afe122639812aaa791c84f311d6b992f2332fef",
+      "job_is_literal_null": false,
+      "error": "method_not_allowed"
+    },
+    {
+      "name": "missing auth",
+      "status": 401,
+      "expected": 401,
+      "pass": true,
+      "response_sha256": "782eeaa7f1915f6783146f8180751785584f0f24bd4e503165c7fc4a597da600",
+      "job_is_literal_null": false,
+      "error": "unauthorized"
+    },
+    {
+      "name": "wrong auth",
+      "status": 401,
+      "expected": 401,
+      "pass": true,
+      "response_sha256": "782eeaa7f1915f6783146f8180751785584f0f24bd4e503165c7fc4a597da600",
+      "job_is_literal_null": false,
+      "error": "unauthorized"
+    },
+    {
+      "name": "Edge authenticated to own Postgres",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+      "job_is_literal_null": false
+    },
+    {
+      "name": "original-key exact identity",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "c8ee0c37449125b7ee101b9d5c7687953ffb5b045c285721f315bbc58af4a364",
+      "job_is_literal_null": false,
+      "job_id": "0459dbbb-3347-428d-af4c-d18672d8ae81",
+      "job_status": "uploading"
+    },
+    {
+      "name": "missing key literal null",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "job_is_literal_null": true
+    },
+    {
+      "name": "foreign tenant_id",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "job_is_literal_null": true
+    },
+    {
+      "name": "foreign project_id",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "job_is_literal_null": true
+    },
+    {
+      "name": "foreign conversation_session_id",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "job_is_literal_null": true
+    },
+    {
+      "name": "foreign correlation_id",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "job_is_literal_null": true
+    },
+    {
+      "name": "malformed key rejected",
+      "status": 400,
+      "expected": 400,
+      "pass": true,
+      "response_sha256": "c135f7e313c6c1ea65c3e4bfd5db00c3349d4ad2f22f0f3bde75121365a71633",
+      "job_is_literal_null": false,
+      "error": "operation_lookup_invalid_scope"
+    },
+    {
+      "name": "repeat readonly recovery same identity",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "response_sha256": "c8ee0c37449125b7ee101b9d5c7687953ffb5b045c285721f315bbc58af4a364",
+      "job_is_literal_null": false,
+      "job_id": "0459dbbb-3347-428d-af4c-d18672d8ae81",
+      "job_status": "uploading"
+    }
+  ],
+  "passed": 12,
+  "total": 12,
+  "submission": "NOT_CALLED",
+  "customer_sends": 0,
+  "paid_provider_calls": 0,
+  "frontend_browser_uat": "NOT_RUN"
+}
