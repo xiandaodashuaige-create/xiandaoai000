@@ -1,0 +1,45 @@
+{
+  "frontendSha": "11ed9ecd8045e3b1a015fdf9bc59b241060e3cbf",
+  "backendSha": "9a47592a7043316e095a04eb00fcf8274c19f48c",
+  "baseUrl": "https://lulian-ai-beauty-2k03eaost-xiandaodashuaige-creates-projects.vercel.app",
+  "testOnly": true,
+  "results": [
+    {
+      "name": "agent-apply-without-confirmation",
+      "httpStatus": 400,
+      "body": {
+        "state": "FAILED",
+        "reason": "INVALID_INPUT"
+      },
+      "pass": true
+    },
+    {
+      "name": "agent-foreign-project-write-denied",
+      "httpStatus": 403,
+      "body": {
+        "state": "FAILED",
+        "reason": "OWNER_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "name": "agent-missing-receipt",
+      "httpStatus": 404,
+      "body": {
+        "state": "FAILED",
+        "reason": "TARGET_NOT_FOUND"
+      },
+      "pass": true
+    },
+    {
+      "name": "agent-no-customer-sessions-after-rejection",
+      "httpStatus": 200,
+      "body": {
+        "code": 0,
+        "sessions": [],
+        "groups": []
+      },
+      "pass": true
+    }
+  ]
+}

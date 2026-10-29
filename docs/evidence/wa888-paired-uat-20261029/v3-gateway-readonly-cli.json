@@ -1,0 +1,81 @@
+{
+  "source": "f4dcea49d7b4fd53b642361052bafdba9547d45a",
+  "url": "https://xiandaoai000-j8jz72vep-xiandaodashuaige-creates-projects.vercel.app/api/a3-video-provider",
+  "transport": "authenticated vercel curl",
+  "checks": [
+    {
+      "name": "missing-gateway-auth",
+      "status": 401,
+      "pass": true,
+      "sha256": "782eeaa7f1915f6783146f8180751785584f0f24bd4e503165c7fc4a597da600",
+      "literalNull": false
+    },
+    {
+      "name": "wrong-gateway-auth",
+      "status": 401,
+      "pass": true,
+      "sha256": "782eeaa7f1915f6783146f8180751785584f0f24bd4e503165c7fc4a597da600",
+      "literalNull": false
+    },
+    {
+      "name": "original-job-restored",
+      "status": 200,
+      "pass": true,
+      "sha256": "bef9ba15440aa4576a3f4b8063ffd3be99f19219cb5eac76385c0d0a3cca9052",
+      "literalNull": false,
+      "jobId": "0459dbbb-3347-428d-af4c-d18672d8ae81"
+    },
+    {
+      "name": "unknown-key-literal-null",
+      "status": 200,
+      "pass": true,
+      "sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "literalNull": true
+    },
+    {
+      "name": "foreign-tenant_id",
+      "status": 200,
+      "pass": true,
+      "sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "literalNull": true
+    },
+    {
+      "name": "foreign-project_id",
+      "status": 200,
+      "pass": true,
+      "sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "literalNull": true
+    },
+    {
+      "name": "foreign-conversation_session_id",
+      "status": 200,
+      "pass": true,
+      "sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "literalNull": true
+    },
+    {
+      "name": "foreign-correlation_id",
+      "status": 200,
+      "pass": true,
+      "sha256": "fe75e0ecc7727d7228e17f2bacb7f276dde13f5ab154338b168df9d95bac2fda",
+      "literalNull": true
+    },
+    {
+      "name": "malformed-key",
+      "status": 400,
+      "pass": true,
+      "sha256": "c135f7e313c6c1ea65c3e4bfd5db00c3349d4ad2f22f0f3bde75121365a71633",
+      "literalNull": false
+    },
+    {
+      "name": "repeat-read-same-job",
+      "status": 200,
+      "pass": true,
+      "sha256": "bef9ba15440aa4576a3f4b8063ffd3be99f19219cb5eac76385c0d0a3cca9052",
+      "literalNull": false,
+      "jobId": "0459dbbb-3347-428d-af4c-d18672d8ae81"
+    }
+  ],
+  "testOnly": true,
+  "writes": 0
+}

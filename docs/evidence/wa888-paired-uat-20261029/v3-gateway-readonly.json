@@ -1,0 +1,15 @@
+{
+  "source": "f4dcea49d7b4fd53b642361052bafdba9547d45a",
+  "url": "https://xiandaoai000-j8jz72vep-xiandaodashuaige-creates-projects.vercel.app/api/a3-video-provider",
+  "checks": [
+    {
+      "name": "missing-gateway-auth",
+      "status": 401,
+      "pass": false,
+      "sha256": "f6d8b67d264bfa5a9aa68d8d44eb6eb3337cf34ccc7bbaae9fe8fc6107ab0079",
+      "literalNull": false
+    }
+  ],
+  "testOnly": true,
+  "writes": 0
+}

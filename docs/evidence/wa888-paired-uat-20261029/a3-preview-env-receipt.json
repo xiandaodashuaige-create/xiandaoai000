@@ -1,0 +1,32 @@
+[
+  {
+    "key": "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "target": "preview",
+    "gitBranch": "feat/wa-sales-chat-complete-848-20261028",
+    "created": true
+  },
+  {
+    "key": "SUPABASE_SECRET_KEY",
+    "target": "preview",
+    "gitBranch": "feat/wa-sales-chat-complete-848-20261028",
+    "created": true
+  },
+  {
+    "key": "WHATSAPP_AI_SENDO_BASE_URL",
+    "target": "preview",
+    "gitBranch": "feat/wa-sales-chat-complete-848-20261028",
+    "created": true
+  },
+  {
+    "key": "WHATSAPP_AI_SENDO_API_KEY",
+    "target": "preview",
+    "gitBranch": "feat/wa-sales-chat-complete-848-20261028",
+    "created": true
+  },
+  {
+    "key": "VIDEO_AGENT_ENABLED",
+    "target": "preview",
+    "gitBranch": "feat/wa-sales-chat-complete-848-20261028",
+    "created": true
+  }
+]

@@ -1,0 +1,160 @@
+{
+  "frontendSha": "11ed9ecd8045e3b1a015fdf9bc59b241060e3cbf",
+  "backendSha": "9a47592a7043316e095a04eb00fcf8274c19f48c",
+  "baseUrl": "https://lulian-ai-beauty-2k03eaost-xiandaodashuaige-creates-projects.vercel.app",
+  "testOnly": true,
+  "results": [
+    {
+      "name": "normal-auth-project-rls",
+      "httpStatus": 200,
+      "body": [
+        {
+          "id": "d744ba1d-8d62-4581-8d3c-78db9936e888",
+          "tenant_id": "60852e80-7f69-4d18-a17e-c5b26dc2ef9e"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "name": "unauthenticated-denied",
+      "httpStatus": 403,
+      "body": {
+        "state": "BLOCKED",
+        "reason": "OWNER_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "name": "foreign-project-denied",
+      "httpStatus": 403,
+      "body": {
+        "state": "BLOCKED",
+        "reason": "OWNER_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "name": "unmapped-read-fails-closed",
+      "httpStatus": 409,
+      "body": {
+        "state": "BLOCKED",
+        "reason": "A3_MAPPING_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "name": "provision-requires-confirmation",
+      "httpStatus": 400,
+      "body": {
+        "reason": "CONFIRMATION_REQUIRED"
+      },
+      "pass": true
+    },
+    {
+      "name": "dedicated-provision",
+      "httpStatus": 200,
+      "body": {
+        "state": "CONNECTED"
+      },
+      "pass": true
+    },
+    {
+      "name": "same-scope-provision-idempotent",
+      "httpStatus": 200,
+      "body": {
+        "state": "CONNECTED"
+      },
+      "pass": true
+    },
+    {
+      "name": "bound-empty-sessions",
+      "httpStatus": 200,
+      "body": {
+        "sessions": []
+      },
+      "pass": true
+    },
+    {
+      "name": "read-scoped-agent-config",
+      "httpStatus": 200,
+      "body": {
+        "code": 0,
+        "sessions": [],
+        "groups": []
+      },
+      "pass": true
+    },
+    {
+      "name": "read-scoped-automations",
+      "httpStatus": 200,
+      "body": {
+        "code": 0,
+        "sessions": [],
+        "groups": [],
+        "flows": []
+      },
+      "pass": true
+    },
+    {
+      "name": "read-reception",
+      "httpStatus": 200,
+      "body": {
+        "code": 0,
+        "numbers": [],
+        "settingsUrl": "https://wa888-backend-staging.up.railway.app/admin"
+      },
+      "pass": true
+    },
+    {
+      "name": "read-customer-quality",
+      "httpStatus": 200,
+      "body": {
+        "projectId": 1,
+        "totalCustomers": 0,
+        "classificationBreakdown": {},
+        "funnelStageBreakdown": {},
+        "scoreBuckets": {
+          "0-39": 0,
+          "40-69": 0,
+          "70-100": 0
+        },
+        "avgScore": null
+      },
+      "pass": true
+    },
+    {
+      "name": "read-customers",
+      "httpStatus": 200,
+      "body": {
+        "customers": []
+      },
+      "pass": true
+    },
+    {
+      "name": "read-sales-status",
+      "httpStatus": 200,
+      "body": {
+        "projectId": "d744ba1d-8d62-4581-8d3c-78db9936e888",
+        "observedAt": "2026-10-29T04:29:01.128Z",
+        "adDestination": {
+          "state": "UNKNOWN",
+          "e164": null
+        },
+        "reception": {
+          "state": "NONE",
+          "numbers": []
+        },
+        "automaticReception": "NO_NUMBERS"
+      },
+      "pass": true
+    },
+    {
+      "name": "foreign-provision-denied",
+      "httpStatus": 403,
+      "body": {
+        "reason": "OWNER_REQUIRED"
+      },
+      "pass": true
+    }
+  ]
+}

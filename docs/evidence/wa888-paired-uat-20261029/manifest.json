@@ -1,0 +1,61 @@
+{
+  "createdAt": "2026-10-29T04:39:25.864273+00:00",
+  "files": [
+    {
+      "path": "a3-auth-receipt.json",
+      "sha256": "a0295ae4dd9888932664dca2070616c7aae10913ad779cb1bc73d4b543fc7ece",
+      "bytes": 214
+    },
+    {
+      "path": "a3-preview-env-receipt.json",
+      "sha256": "3430c009bd9fb1ffdfb50ad11c017d84ffc5adc2925c09a7769d752eca878d15",
+      "bytes": 808
+    },
+    {
+      "path": "a3-paired-http.json",
+      "sha256": "e94767997a8346cc9b56c41f7539c9c13cf853965381f30d812191355962beb3",
+      "bytes": 3614
+    },
+    {
+      "path": "a3-paired-negative-http.json",
+      "sha256": "f198451d25908a78beefacda0099106a12729a001d3a45439cfe22c2ea83a75f",
+      "bytes": 1082
+    },
+    {
+      "path": "v3-gateway-readonly.json",
+      "sha256": "7cdcdad35be3a22a2e70678ecebf574cfc5c9b7218e008c34f2c64e811629256",
+      "bytes": 439
+    },
+    {
+      "path": "v3-gateway-readonly-cli.json",
+      "sha256": "053cfcfae7e718e5c063a16836359254bffc72785e30bf186acdc1a4aca888d6",
+      "bytes": 2484
+    },
+    {
+      "path": "v3-access-cleanup.json",
+      "sha256": "90827ffe7f8c605fe4fa6fc64fb1a53c244db4ae99e51d812682d1d6926efa5d",
+      "bytes": 125
+    },
+    {
+      "path": "verify_a3_paired.py",
+      "sha256": "7166a72cf90db9d5b2b72323c5f22fded693f85608658f923a8b6da5f8ee9a68",
+      "bytes": 3639
+    },
+    {
+      "path": "extra_paired_checks.py",
+      "sha256": "190bc828f303f2f003e5cae0b9b4ef1fc77b9a3c99501376082b34636f787904",
+      "bytes": 1213
+    },
+    {
+      "path": "verify_v3_gateway_cli.py",
+      "sha256": "0c738cdae3c1c006eba6b64d6db50ece889c0ead178be98839d97eda381255f0",
+      "bytes": 3185
+    }
+  ],
+  "frontendSha": "11ed9ecd8045e3b1a015fdf9bc59b241060e3cbf",
+  "backendSha": "9a47592a7043316e095a04eb00fcf8274c19f48c",
+  "gatewaySha": "f4dcea49d7b4fd53b642361052bafdba9547d45a",
+  "testOnly": true,
+  "browserAuthenticatedUat": "NOT_RUN_LEGAL_TERMS_CONFIRMATION_PENDING",
+  "production": "NOT_DEPLOYED"
+}
