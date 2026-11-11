@@ -151,8 +151,8 @@ export const INTENT_COPY = {
     middleVo: '鹿聯AI廣告員工會幫你整理賣點，再投俾同區真正有興趣嘅客人睇。',
     msgs: ['你好，想問下你哋個療程', '我住附近，想約時間'],
     chatVo: '睇到廣告嘅客人，可以直接WhatsApp問你同預約。',
-    ctaText: '香港美容院廣告合作\n先做廣告體檢',
-    ctaVo: '想知你間舖廣告卡喺邊？WhatsApp我哋，先幫你做廣告體檢。',
+    ctaText: '香港美容院廣告合作\nWhatsApp 了解方式',
+    ctaVo: '想了解點樣由AI幫你投放廣告？WhatsApp我哋傾吓。',
   },
 };
 
